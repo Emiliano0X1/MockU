@@ -1,0 +1,25 @@
+{
+  "package_id": "com.example.g2demo",
+  "edition": "202601",
+  "name": "G2 Demo",
+  "version": "0.1.0",
+  "min_app_version": "2.2.6",
+  "min_sdk_version": "0.0.7",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "This app needs to access the network in order to ...",
+      "whitelist": [
+        "https://example.com"
+      ]
+    },
+    {
+      "name": "location",
+      "desc": "This app needs to access the location in order to ..."
+    }
+  ],
+  "supported_languages": [
+    "en"
+  ]
+}
