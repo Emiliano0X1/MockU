@@ -1,6 +1,6 @@
 # Mock-U
 
-> One-line tagline that sums up what your project does.
+
 
 🏆 **Built for [AI LA Hacks] [2026]** · [Even Realities Building Challenge]
 
