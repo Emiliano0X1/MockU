@@ -14,7 +14,7 @@ try:
   print(result["full_text"])
   print("-"*30)
   print("FIRST 5 WORDS WITH TIMESTAMPS")
-  for word in result["words"[:5]]:
+  for word in result["words"][:5]:
     print(f"Word: '{word['text']:<10}' | Start: {word['start']}ms | End: {word['end']}ms")
 except Exception as e:
   print(f"Error: {e}")
