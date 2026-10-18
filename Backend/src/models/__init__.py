@@ -25,6 +25,12 @@ from src.models.biometric import (
 from src.models.audio import AudioUploadResponse
 from src.models.report import ReportResponse, ReportData, ReportFinding
 from src.models.transcript import TranscriptResponse, TranscriptSegment
+from src.models.suggestion import (
+    SuggestionItem,
+    SuggestionListResponse,
+    TestSuggestionRequest,
+    TestSuggestionResponse,
+)
 
 __all__ = [
     "ProfileCreate",
@@ -57,4 +63,8 @@ __all__ = [
     "ReportFinding",
     "TranscriptResponse",
     "TranscriptSegment",
+    "SuggestionItem",
+    "SuggestionListResponse",
+    "TestSuggestionRequest",
+    "TestSuggestionResponse",
 ]

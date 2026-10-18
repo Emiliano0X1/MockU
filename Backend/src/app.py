@@ -11,6 +11,7 @@ from src.core.exceptions import (
     format_error_response,
     validation_exception_handler,
 )
+from src.routes.live import router as live_router
 from src.routes.router import api_v1_router
 
 app = FastAPI(
@@ -82,8 +83,9 @@ def health_check():
         )
 
 
-# 4. Include v1 endpoints (/api/v1)
+# 4. Include v1 endpoints (/api/v1) and live WebSocket endpoints
 app.include_router(api_v1_router)
+app.include_router(live_router)
 
 if __name__ == "__main__":
     uvicorn.run("src.app:app", host="0.0.0.0", port=8000, reload=True)

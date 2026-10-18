@@ -10,6 +10,8 @@ from fastapi import (
     UploadFile,
     status,
 )
+from src.core.exceptions import ConflictException
+from src.core.live_config import PULSOID_ENABLED
 from src.models.audio import AudioUploadResponse
 from src.models.biometric import (
     BiometricBatchRequest,
@@ -36,6 +38,8 @@ from src.services.biometric_service import (
     get_biometric_series,
     ingest_biometrics_batch,
 )
+from src.services.live_manager import live_manager
+from src.services.pulsoid_service import start_pulsoid_for_session
 from src.services.report_service import get_session_report
 from src.services.session_service import (
     create_session,
@@ -54,13 +58,35 @@ router = APIRouter(prefix="/sessions", tags=["Interview Sessions"])
 @router.post("", response_model=SessionCreateResponse, status_code=status.HTTP_201_CREATED)
 def handle_create_session(payload: SessionCreate):
     """Start a new mock interview session and select randomized questions."""
-    return create_session(
+    # Enforce one active Pulsoid session at a time if live streaming is enabled
+    if PULSOID_ENABLED:
+        for s_id, s in live_manager.active_sessions.items():
+            if s.pulsoid_task and not s.pulsoid_task.done():
+                raise ConflictException(
+                    message="Another interview is in progress.",
+                    code="SESSION_IN_PROGRESS",
+                )
+
+    result = create_session(
         profile_id=str(payload.profile_id),
         company_id=str(payload.company_id),
         resume_id=str(payload.resume_id),
         role_title=payload.role_title or "SWE Intern",
         question_count=payload.question_count or 6,
     )
+
+    # Initialize live tracking session
+    session_id = str(result["id"])
+    live_manager.get_or_create_session(session_id, result["started_at"])
+
+    # Launch Pulsoid listener if enabled
+    if PULSOID_ENABLED:
+        try:
+            start_pulsoid_for_session(session_id)
+        except Exception:
+            pass
+
+    return result
 
 
 @router.get("", response_model=SessionListResponse, status_code=status.HTTP_200_OK)
@@ -108,10 +134,32 @@ def handle_record_question_shown(
     response_model=BiometricBatchResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def handle_ingest_biometrics(id: UUID, payload: BiometricBatchRequest):
-    """Batch ingest biometric heart rate samples from wearable."""
+async def handle_ingest_biometrics(id: UUID, payload: BiometricBatchRequest):
+    """
+    Batch ingest biometric heart rate samples from wearable or simulator.
+    Feeds samples into the live spike detector for real-time glasses feedback.
+    """
+    session_id = str(id)
+
+    # Reject manual ingestion if an automated Pulsoid sensor is already streaming
+    sess = live_manager.get_session(session_id)
+    if PULSOID_ENABLED and sess and sess.pulsoid_task and not sess.pulsoid_task.done():
+        raise ConflictException(
+            message="Live sensor active. Manual ingestion is disabled while Pulsoid is streaming.",
+            code="LIVE_SENSOR_ACTIVE",
+        )
+
     raw_samples = [s.model_dump() for s in payload.samples]
-    inserted_count = ingest_biometrics_batch(str(id), raw_samples)
+    inserted_count = ingest_biometrics_batch(session_id, raw_samples)
+
+    # Feed samples into the real-time detector
+    for s in payload.samples:
+        await live_manager.ingest_sample(
+            session_id=session_id,
+            bpm=s.bpm,
+            explicit_t_ms=s.t_ms,
+        )
+
     return {"inserted": inserted_count}
 
 
@@ -136,9 +184,15 @@ def handle_get_biometrics_series(
 
 
 @router.post("/{id}/end", response_model=SessionEndResponse, status_code=status.HTTP_200_OK)
-def handle_end_session(id: UUID):
-    """Mark the interview as completed and calculate duration."""
-    return end_session(str(id))
+async def handle_end_session(id: UUID):
+    """Mark the interview as completed, stop live tracking, and close glasses connection."""
+    session_id = str(id)
+    res = end_session(session_id)
+
+    # Stop live session manager, flush buffer, and notify glasses
+    await live_manager.end_session(session_id)
+
+    return res
 
 
 @router.post(
@@ -186,9 +240,11 @@ async def handle_reprocess_session(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def handle_delete_session(id: UUID):
-    """Delete an interview session and its audio recording from storage."""
-    delete_session(str(id))
+async def handle_delete_session(id: UUID):
+    """Delete an interview session, related records, and audio recording from storage."""
+    session_id = str(id)
+    await live_manager.end_session(session_id)
+    delete_session(session_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

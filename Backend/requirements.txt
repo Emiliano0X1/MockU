@@ -6,3 +6,4 @@ python-multipart>=0.0.9
 supabase>=2.3.0
 pypdf>=4.1.0
 pymupdf>=1.24.0
+websockets>=13.0
