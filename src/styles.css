@@ -378,6 +378,10 @@ input {
 }
 
 .start.system {
+  background: var(--aurora);
+}
+
+.start.system:disabled {
   background: var(--aurora-soft);
 }
 
@@ -745,4 +749,41 @@ input {
   height: 100%;
   border-radius: 5px;
   background: var(--sky);
+}
+
+/* ---------- system design ---------- */
+
+.diagram-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--white);
+  border: 2px solid var(--frost);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.diagram-type {
+  flex-shrink: 0;
+  width: 92px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 20px;
+  border-radius: 6px;
+  padding: 1px 6px;
+  color: var(--aurora);
+  background: var(--aurora-tint);
+}
+
+.diagram-edge {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 3px solid var(--aurora-soft);
+  padding: 4px 0 4px 12px;
+}
+
+.tile.design {
+  border-color: var(--aurora);
 }

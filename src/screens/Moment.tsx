@@ -23,12 +23,18 @@ function momentContext({ segments, detail }: SessionReport, finding: Finding) {
   return { from, to, said, question }
 }
 
+// Behavioral findings carry a note; system design ones an observation and a recommendation.
+function findingNote(finding: Finding) {
+  const { note, observation, recommendation } = finding.details as { note?: string; observation?: string; recommendation?: string }
+  return note ?? [observation, recommendation].filter(Boolean).join(' ')
+}
+
 // The moment as plain text for the glasses.
 function momentText(data: SessionReport, finding: Finding, hasNext: boolean) {
   const { said, question } = momentContext(data, finding)
   return [
     `${finding.title} (${finding.severity})`,
-    finding.details.note ?? '',
+    findingNote(finding),
     question ? `During: ${question.text}` : '',
     said.length ? `You said:\n${said.map((s) => `${formatMs(s.start_ms)} ${s.text}`).join('\n')}` : '',
     hasNext ? 'Press for the next moment.' : '',
@@ -86,19 +92,19 @@ export function Moment({ sessionId, findingId, nav }: { sessionId: string; findi
         <div className="row" style={{ gap: 8 }}>
           <span className={severityTag[finding.severity]} style={{ fontSize: 12, fontWeight: 700, textTransform: 'capitalize' }}>{finding.severity}</span>
           <span className="small">
-            {formatMs(finding.start_ms)}–{formatMs(finding.end_ms)} · {finding.category}
+            {formatMs(finding.start_ms)}–{formatMs(finding.end_ms)} · {finding.category.replace(/_/g, ' ')}
           </span>
         </div>
         <h2 className="h1" style={{ fontSize: 26, lineHeight: '32px' }}>{finding.title}</h2>
         {question && <p className="muted">During: "{question.text}"</p>}
       </section>
 
-      {finding.details.note && (
+      {findingNote(finding) && (
         <section className="row" style={{ alignItems: 'flex-start', gap: 10, paddingTop: 18 }}>
           <Mocky size={52} style={{ flexShrink: 0 }} />
           <div className="coach">
             <span className="eyebrow" style={{ color: 'var(--sky)' }}>Mocky noticed</span>
-            <p style={{ fontWeight: 600, fontSize: 15, lineHeight: '21px' }}>{finding.details.note}</p>
+            <p style={{ fontWeight: 600, fontSize: 15, lineHeight: '21px' }}>{findingNote(finding)}</p>
           </div>
         </section>
       )}

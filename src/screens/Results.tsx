@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Nav } from '../App'
 import { api, errorMessage } from '../api/client'
 import type { Finding, Severity } from '../api/types'
+import { DiagramView } from '../components/DiagramView'
 import { HeartChart } from '../components/HeartChart'
 import { icons, Mocky } from '../components/ui'
 import { showOnGlasses } from '../glasses/bridge'
@@ -49,6 +50,8 @@ export function Results({ sessionId, nav }: { sessionId: string; nav: Nav }) {
       loading: 'Loading your results…',
       processing: 'Mocky is reviewing your answers. This takes a moment.',
       missing: "This interview ended before its recording was saved, so there's nothing to review.",
+      unsubmitted: 'Mocky drew this design, but it was never submitted for grading.',
+      cancelled: 'This design challenge was cancelled, so there is no grade.',
       failed: 'Mocky ran into a problem reviewing this interview.',
       error: state.kind === 'error' ? state.message : '',
     }[state.kind]
@@ -74,11 +77,9 @@ function ReportView({ data, nav }: { data: SessionReport; nav: Nav }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const minutes = detail.ended_at ? Math.max(1, Math.round((Date.parse(detail.ended_at) - Date.parse(detail.started_at)) / 60000)) : null
-  const subscores = [
-    { label: 'Communication', value: summary.communication_score },
-    { label: 'Technical depth', value: summary.technical_depth_score },
-    { label: 'Composure', value: summary.composure_score },
-  ].filter((s): s is { label: string; value: number } => typeof s.value === 'number')
+  const design = detail.mode === 'system_design'
+  const accent = design ? 'var(--aurora)' : 'var(--sky)'
+  const subscores = subscoresOf(summary)
 
   const remove = async () => {
     try {
@@ -95,8 +96,8 @@ function ReportView({ data, nav }: { data: SessionReport; nav: Nav }) {
     <main className="screen">
       <section className="score-hero stack" style={{ gap: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <span className="eyebrow" style={{ color: 'var(--sky)' }}>
-            {companyName} mock{minutes ? ` · ${minutes} min` : ''}
+          <span className="eyebrow" style={{ color: accent }}>
+            {companyName} · {design ? 'System design' : 'Behavioral'}{minutes ? ` · ${minutes} min` : ''}
           </span>
           <button className="link" style={{ fontSize: 14 }} onClick={() => nav({ name: 'home' })}>Done</button>
         </div>
@@ -115,16 +116,25 @@ function ReportView({ data, nav }: { data: SessionReport; nav: Nav }) {
           {subscores.map((s) => (
             <div key={s.label} className="subscore">
               <span style={{ fontWeight: 700, fontSize: 14, width: 120 }}>{s.label}</span>
-              <span className="subscore-bar"><span style={{ width: `${Math.max(0, Math.min(100, s.value))}%` }} /></span>
+              <span className="subscore-bar"><span style={{ width: `${Math.max(0, Math.min(100, s.value))}%`, background: accent }} /></span>
               <span className="display" style={{ fontSize: 16, width: 32, textAlign: 'right' }}>{s.value}</span>
             </div>
           ))}
         </section>
       )}
 
+      {design && data.graph && (
+        <section className="stack" style={{ gap: 10, paddingTop: 24 }}>
+          <h2 className="h2">Your design</h2>
+          <div className="card">
+            <DiagramView graph={data.graph} />
+          </div>
+        </section>
+      )}
+
       {findings.length > 0 && (
         <section className="stack" style={{ paddingTop: 24 }}>
-          <h2 className="h2" style={{ paddingBottom: 6 }}>Moments to review</h2>
+          <h2 className="h2" style={{ paddingBottom: 6 }}>{design ? 'What to improve' : 'Moments to review'}</h2>
           {findings.map((finding) => (
             <FindingRow key={finding.id} finding={finding} onClick={() => nav({ name: 'moment', sessionId: detail.id, findingId: finding.id })} />
           ))}
@@ -176,7 +186,7 @@ function ReportView({ data, nav }: { data: SessionReport; nav: Nav }) {
       )}
 
       <section className="stack" style={{ gap: 10, paddingTop: 24 }}>
-        <button className="btn" onClick={() => nav({ name: 'home' })}>Retry with a new company</button>
+        <button className="btn" style={{ background: accent }} onClick={() => nav({ name: 'home' })}>Retry with a new company</button>
         <p className="row small" style={{ justifyContent: 'center', gap: 6, paddingTop: 4 }}>
           {icons.check('#2FA866', 14)}
           Saved to My mocks
@@ -210,7 +220,7 @@ export function FindingRow({ finding, onClick }: { finding: Finding; onClick: ()
       <span className="stack" style={{ flex: 1, gap: 2 }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>{finding.title}</span>
         <span className="small">
-          at {formatMs(finding.start_ms)} · {finding.category}
+          at {formatMs(finding.start_ms)} · {finding.category.replace(/_/g, ' ')}
         </span>
       </span>
       {icons.chevron}
@@ -235,17 +245,24 @@ export function findingItem(finding: Finding) {
 }
 
 // The results page as plain text for the glasses.
+// Sub-scores present in the report: behavioral and system design use different ones.
+function subscoresOf(summary: SessionReport['report']['summary']) {
+  return [
+    { label: 'Architecture', value: summary.architecture_score },
+    { label: 'Scalability', value: summary.scalability_score },
+    { label: 'Trade-offs', value: summary.tradeoffs_score },
+    { label: 'Communication', value: summary.communication_score },
+    { label: 'Technical depth', value: summary.technical_depth_score },
+    { label: 'Composure', value: summary.composure_score },
+  ].filter((s): s is { label: string; value: number } => typeof s.value === 'number')
+}
+
 function summaryText({ report, tips }: SessionReport) {
   const { summary } = report
-  const scores = [
-    ['Communication', summary.communication_score],
-    ['Technical depth', summary.technical_depth_score],
-    ['Composure', summary.composure_score],
-  ].filter(([, value]) => typeof value === 'number')
   return [
     `Score ${report.overall_score ?? '--'}/100`,
     summary.overview ?? headline(report.overall_score),
-    scores.map(([name, value]) => `${name}: ${value}`).join('\n'),
+    subscoresOf(summary).map((s) => `${s.label}: ${s.value}`).join('\n'),
     summary.key_strengths?.length ? `What landed\n${summary.key_strengths.map((s) => `- ${s}`).join('\n')}` : '',
     summary.areas_for_growth?.length ? `What to fix\n${summary.areas_for_growth.map((s) => `- ${s}`).join('\n')}` : '',
     tips.length ? `Live tips\n${tips.map((t) => `- ${formatMs(t.t_ms)} ${t.text}`).join('\n')}` : '',

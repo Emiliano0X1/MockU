@@ -21,7 +21,6 @@ export const glassesTexts = {
     text: 'Tilt or swipe to choose. Press to start.',
     choice: { left: '< Behavioral', right: 'System design >', selected },
   }),
-  systemDesignSoon: (): GlassesView => ({ mocky: true, label: 'System design', text: 'System design mode selected. Press to start.' }),
 
   briefing: (company: string): GlassesView => ({
     mocky: false,
@@ -51,27 +50,40 @@ export const glassesTexts = {
   answerReceived: (): GlassesView => ({ mocky: false, label: '', text: 'Got it. Take a breath.' }),
   analyzing: (): GlassesView => ({ mocky: true, label: "That's the interview", text: 'Mocky is reviewing your answers.' }),
   done: (): GlassesView => ({ mocky: false, label: 'Done', text: 'Your results are on your phone.' }),
-  systemDesignPrompt: (promptTitle: string): GlassesView => ({
-    mocky: true,
-    label: 'System Design',
-    text: `${promptTitle}\nExplain components, data flow & scale.`,
-  }),
+  // System design: same rhythm as behavioral (prompt, countdown, explain),
+  // then a diagram to review and submit.
+  systemDesignPrompt: (prompt: string): GlassesView => ({ mocky: true, label: 'Design challenge', text: prompt }),
   systemDesignInterpreting: (): GlassesView => ({
     mocky: true,
-    label: 'Interpreting',
-    text: 'Mocky is drafting your architecture diagram...',
+    label: 'Drawing your design',
+    text: 'Mocky is turning your explanation into a diagram.',
   }),
-  systemDesignReview: (count: number, summaryList: string[]): GlassesView => ({
+  // First item submits, last cancels; the components in between are for reading.
+  systemDesignReview: (components: string[]): GlassesView => ({
     mocky: false,
-    label: `Architecture (${count} items)`,
-    text: '2x press: Submit for grading\nTilt: Cancel',
-    list: summaryList,
+    label: `Your design · ${components.length} parts`,
+    text: '',
+    list: ['Submit for grading', ...components.map((c) => `- ${c}`), 'Cancel attempt'],
   }),
-  systemDesignGrading: (): GlassesView => ({
-    mocky: true,
-    label: 'Grading',
-    text: 'Mocky is grading your design against standards.',
+  systemDesignConfirmEnd: (): GlassesView => ({
+    mocky: false,
+    label: 'End the challenge?',
+    text: '',
+    list: ['Keep explaining', 'Draw my diagram now', 'Quit challenge'],
   }),
+  systemDesignConfirmCancel: (): GlassesView => ({
+    mocky: false,
+    label: 'Cancel this attempt?',
+    text: '',
+    list: ['Keep my design', 'Cancel attempt'],
+  }),
+  systemDesignGrading: (): GlassesView => ({ mocky: true, label: 'Grading', text: 'Mocky is grading your design.' }),
+}
+
+// Label line while explaining a design: time spent so far.
+export function explainingLabel(elapsedSeconds: number) {
+  const s = Math.max(0, Math.floor(elapsedSeconds))
+  return `Explaining ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · press when done`
 }
 
 
@@ -86,7 +98,11 @@ export const glassesTestCases: { name: string; view: GlassesView }[] = [
   { name: 'Welcome (no resume)', view: glassesTexts.welcomeNeedsResume('Alex') },
   { name: 'Welcome', view: glassesTexts.welcome('Alex') },
   { name: 'Welcome, holding left', view: { ...glassesTexts.welcome('Alex'), label: tiltLabel('left', 0.6) } },
-  { name: 'System design tilt', view: glassesTexts.systemDesignSoon() },
+  { name: 'Design challenge', view: glassesTexts.systemDesignPrompt('Design a URL shortener like Bitly') },
+  { name: 'Design: explaining', view: { ...glassesTexts.systemDesignPrompt('Design a URL shortener like Bitly'), label: explainingLabel(95) } },
+  { name: 'Design: drawing', view: glassesTexts.systemDesignInterpreting() },
+  { name: 'Design: review', view: glassesTexts.systemDesignReview(['Client App', 'Load Balancer', 'URL Service', 'Redis Cache', 'PostgreSQL']) },
+  { name: 'Design: cancel?', view: glassesTexts.systemDesignConfirmCancel() },
   { name: 'Briefing', view: glassesTexts.briefing('Tidewater') },
   { name: 'Interview starting', view: glassesTexts.starting() },
   { name: 'Question', view: glassesTexts.question('Tell me about a time you disagreed with a teammate.') },

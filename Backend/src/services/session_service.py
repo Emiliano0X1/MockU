@@ -16,6 +16,12 @@ from src.services.resume_service import get_resume_by_id
 AUDIO_BUCKET = "audio"
 
 
+def _is_system_design_question(question: Dict[str, Any]) -> bool:
+    """Category 'System Design', matched loosely ('system_design', 'system design', ...)."""
+    category = str(question.get("category") or "").strip().lower().replace("_", " ").replace("-", " ")
+    return " ".join(category.split()) == "system design"
+
+
 def create_session(
     profile_id: str,
     company_id: str,
@@ -110,17 +116,24 @@ def create_session(
         all_questions = q_res.data or []
 
         if is_system_design:
-            # Filter specifically for System Design questions
-            sd_questions = [
-                q for q in all_questions if q.get("category") == "System Design"
-            ]
-            eligible = sd_questions if sd_questions else all_questions
+            # System design uses ONLY System Design questions; no fallback to
+            # behavioral ones. Prefer general or this company's prompts.
+            sd_questions = [q for q in all_questions if _is_system_design_question(q)]
+            if not sd_questions:
+                raise UnprocessableEntityException(
+                    message="There are no System Design questions in the question bank yet.",
+                    code="NO_SYSTEM_DESIGN_QUESTIONS",
+                )
+            eligible = [
+                q for q in sd_questions
+                if q.get("company_id") is None or str(q.get("company_id")) == str(company_id)
+            ] or sd_questions
         else:
             # Behavioral: exclude System Design questions if possible
             eligible = [
                 q
                 for q in all_questions
-                if (q.get("category") != "System Design")
+                if not _is_system_design_question(q)
                 and (
                     q.get("company_id") is None
                     or str(q.get("company_id")) == str(company_id)
@@ -173,6 +186,8 @@ def create_session(
             supabase.table("interview_sessions").delete().eq("id", session_id).execute()
         except Exception:
             pass
+        if isinstance(e, AppException):
+            raise  # already a clear error for the app (e.g. NO_SYSTEM_DESIGN_QUESTIONS)
         raise AppException(
             message=f"Failed to initialize session questions: {str(e)}",
             code="SESSION_INIT_ERROR",

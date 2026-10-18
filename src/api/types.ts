@@ -33,7 +33,19 @@ export type Company = {
   website_url?: string | null
 }
 
-export type SessionStatus = 'recording' | 'processing' | 'done' | 'failed'
+export type SessionMode = 'behavioral' | 'system_design'
+
+// Behavioral: recording -> processing -> done. System design: recording ->
+// interpreting -> awaiting_review -> grading -> done (or cancelled).
+export type SessionStatus =
+  | 'recording'
+  | 'processing'
+  | 'interpreting'
+  | 'awaiting_review'
+  | 'grading'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
 
 export type SessionQuestion = {
   position: number
@@ -46,7 +58,8 @@ export type SessionQuestion = {
 // POST /sessions
 export type SessionCreated = {
   id: string
-  status: 'recording'
+  mode?: SessionMode
+  status: SessionStatus
   started_at: string
   company_id: string
   resume_id: string
@@ -57,6 +70,7 @@ export type SessionCreated = {
 // GET /sessions/{id}
 export type SessionDetail = {
   id: string
+  mode?: SessionMode
   status: SessionStatus
   company_id: string
   resume_id: string
@@ -79,6 +93,7 @@ export type SessionEnded = {
 // GET /sessions?profile_id=
 export type SessionListItem = {
   id: string
+  mode?: SessionMode
   company: { id: string; name: string }
   role_title?: string | null
   status: SessionStatus
@@ -106,6 +121,10 @@ export type ReportSummary = {
   communication_score?: number
   technical_depth_score?: number
   composure_score?: number
+  // System design reports
+  architecture_score?: number
+  scalability_score?: number
+  tradeoffs_score?: number
   key_strengths?: string[]
   areas_for_growth?: string[]
   [key: string]: unknown

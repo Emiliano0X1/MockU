@@ -106,7 +106,7 @@ export function App() {
         )
       )
     case 'briefing':
-      return profile && resume && <Briefing company={route.company} profile={profile} resume={resume} nav={setRoute} />
+      return profile && resume && <Briefing company={route.company} mode={route.mode ?? 'behavioral'} profile={profile} resume={resume} nav={setRoute} />
     case 'live':
       return <Live session={route.session} company={route.company} nav={setRoute} />
     case 'systemDesign':

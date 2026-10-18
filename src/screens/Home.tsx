@@ -64,14 +64,10 @@ export function Home({ profile, resume, onProfile, onResume, nav, onSignOut }: P
     try {
       const companies = await getCompanies()
       if (companies.length === 0) throw new Error('No companies are set up on the server yet.')
+      // Both modes go through the same briefing; the session (and its clock)
+      // starts when the candidate says they're ready.
       const company = companies[Math.floor(Math.random() * companies.length)]!
-      if (mode === 'system_design') {
-        if (!resume) throw new Error('Please upload your resume first.')
-        const session = await api.createSession(profile.id, company.id, resume.id, 'system_design')
-        nav({ name: 'systemDesign', session, company })
-      } else {
-        nav({ name: 'briefing', company })
-      }
+      nav({ name: 'briefing', company, mode })
     } catch (err) {
       setError(errorMessage(err, "Couldn't start the interview. Try again."))
       setStarting(false)
@@ -185,7 +181,7 @@ export function Home({ profile, resume, onProfile, onResume, nav, onSignOut }: P
         <button className="start system" disabled={!ready || starting} onClick={() => start('system_design')}>
           <span className="stack" style={{ gap: 2 }}>
             <span className="title">Begin mock<br />system design</span>
-            <span className="sub">{ready ? (starting ? 'Setting up challenge…' : '1 architectural challenge') : 'Upload a resume to unlock'}</span>
+            <span className="sub">{ready ? (starting ? 'Finding a company…' : 'One design challenge · about 15 min') : 'Upload a resume to unlock'}</span>
           </span>
           {icons.bigPlay}
         </button>

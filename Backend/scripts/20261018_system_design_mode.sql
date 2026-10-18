@@ -16,7 +16,8 @@ DROP CONSTRAINT IF EXISTS interview_sessions_status_check;
 
 ALTER TABLE interview_sessions
 ADD CONSTRAINT interview_sessions_status_check 
-CHECK (status IN ('recording', 'interpreting', 'awaiting_review', 'grading', 'done', 'failed', 'cancelled'));
+-- 'processing' is used by behavioral sessions after the audio upload.
+CHECK (status IN ('recording', 'processing', 'interpreting', 'awaiting_review', 'grading', 'done', 'failed', 'cancelled'));
 
 CREATE INDEX IF NOT EXISTS idx_sessions_mode ON interview_sessions(mode);
 
