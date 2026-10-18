@@ -10,8 +10,12 @@ import { glassesTexts } from '../glasses/texts'
 const statusNames: Record<SessionStatus, string> = {
   recording: 'Not finished',
   processing: 'Mocky is reviewing',
+  interpreting: 'Drawing diagram',
+  awaiting_review: 'Diagram not submitted',
+  grading: 'Mocky is grading',
   done: 'Done',
   failed: 'Review failed',
+  cancelled: 'Cancelled',
 }
 
 export function History({ profileId, nav }: { profileId: string; nav: Nav }) {
@@ -86,7 +90,7 @@ export function History({ profileId, nav }: { profileId: string; nav: Nav }) {
             <button key={item.id} className="list-row" onClick={() => nav({ name: 'results', sessionId: item.id })}>
               <span className={`score-badge ${i === 0 ? 'latest' : ''}`}>{item.overall_score ?? '–'}</span>
               <span className="stack" style={{ flex: 1, gap: 2 }}>
-                <span style={{ fontWeight: 700, fontSize: 15 }}>{item.company.name} · {item.role_title ?? 'Behavioral'}</span>
+                <span style={{ fontWeight: 700, fontSize: 15 }}>{item.company.name} · {item.mode === 'system_design' ? 'System design' : 'Behavioral'}</span>
                 <span className="small">
                   {formatDate(item.started_at)}
                   {item.duration_ms ? ` · ${Math.max(1, Math.round(item.duration_ms / 60000))} min` : ''}

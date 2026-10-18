@@ -30,7 +30,12 @@ export const endpoints = {
   biometrics: (id: string) => `${v1}/sessions/${id}/biometrics`, //   GET -> BiometricSeries
   suggestions: (id: string) => `${v1}/sessions/${id}/suggestions`, // GET -> { items: Suggestion[] }
   glassesSocket: (id: string) => `/ws/sessions/${id}/glasses`, //     WebSocket, see GlassesMessage
+  systemDesignAttempts: (id: string) => `${v1}/sessions/${id}/system-design/attempts`, // POST multipart file + duration_ms
+  systemDesignDiagram: (id: string) => `${v1}/sessions/${id}/system-design/diagram`, //   GET -> SystemDesignDiagramResponse
+  systemDesignAccept: (id: string) => `${v1}/sessions/${id}/system-design/diagram/accept`, // POST { attempt_number }
+  systemDesignReject: (id: string) => `${v1}/sessions/${id}/system-design/diagram/reject`, // POST { attempt_number, reason }
 }
+
 
 export const ROLE_TITLE = 'SWE Intern'
 export const QUESTION_COUNT = 6

@@ -33,7 +33,19 @@ export type Company = {
   website_url?: string | null
 }
 
-export type SessionStatus = 'recording' | 'processing' | 'done' | 'failed'
+export type SessionMode = 'behavioral' | 'system_design'
+
+// Behavioral: recording -> processing -> done. System design: recording ->
+// interpreting -> awaiting_review -> grading -> done (or cancelled).
+export type SessionStatus =
+  | 'recording'
+  | 'processing'
+  | 'interpreting'
+  | 'awaiting_review'
+  | 'grading'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
 
 export type SessionQuestion = {
   position: number
@@ -46,7 +58,8 @@ export type SessionQuestion = {
 // POST /sessions
 export type SessionCreated = {
   id: string
-  status: 'recording'
+  mode?: SessionMode
+  status: SessionStatus
   started_at: string
   company_id: string
   resume_id: string
@@ -57,6 +70,7 @@ export type SessionCreated = {
 // GET /sessions/{id}
 export type SessionDetail = {
   id: string
+  mode?: SessionMode
   status: SessionStatus
   company_id: string
   resume_id: string
@@ -79,6 +93,7 @@ export type SessionEnded = {
 // GET /sessions?profile_id=
 export type SessionListItem = {
   id: string
+  mode?: SessionMode
   company: { id: string; name: string }
   role_title?: string | null
   status: SessionStatus
@@ -106,6 +121,10 @@ export type ReportSummary = {
   communication_score?: number
   technical_depth_score?: number
   composure_score?: number
+  // System design reports
+  architecture_score?: number
+  scalability_score?: number
+  tradeoffs_score?: number
   key_strengths?: string[]
   areas_for_growth?: string[]
   [key: string]: unknown
@@ -159,10 +178,60 @@ export type Suggestion = {
 export type GlassesMessage =
   | { type: 'suggestion'; id: string; t_ms: number; text: string; severity: Severity; ttl_ms: number }
   | { type: 'sensor_status'; state: 'online' | 'offline'; last_bpm: number | null }
-  | { type: 'session_ended' }
+  | { type: 'session_ended'; overall_score?: number; text?: string }
+  | { type: 'diagram_ready'; attempt: number; components_count: number; top_components: string[]; can_retry: boolean }
+  | { type: 'grading_progress'; text: string }
   | { type: 'ping' }
 
 // App to server.
 export type GlassesReply = { type: 'ack'; suggestion_id: string } | { type: 'pong' }
 
 export type Health = { status: 'ok' | 'degraded'; database: 'ok' | 'unreachable'; time: string }
+
+// System Design Types
+export type SystemDesignNodeType =
+  | 'client'
+  | 'load_balancer'
+  | 'api_service'
+  | 'cache'
+  | 'database'
+  | 'queue'
+  | 'object_storage'
+  | 'cdn'
+  | 'worker'
+
+export type SystemDesignNode = {
+  id: string
+  type: SystemDesignNodeType | string
+  label: string
+  description?: string
+}
+
+export type SystemDesignEdge = {
+  id: string
+  source: string
+  target: string
+  label?: string
+  protocol?: string
+}
+
+export type SystemDesignGraph = {
+  schema_version: string
+  prompt?: string
+  nodes: SystemDesignNode[]
+  edges: SystemDesignEdge[]
+}
+
+export type SystemDesignDiagramResponse = {
+  session_id: string
+  attempt_number: number
+  status: 'pending' | 'ready' | 'accepted' | 'rejected' | 'failed'
+  graph: SystemDesignGraph | null
+  glasses_summary: {
+    component_count: number
+    components: string[]
+  } | null
+  can_retry: boolean
+  message?: string
+}
+

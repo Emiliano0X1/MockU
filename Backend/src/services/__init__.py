@@ -26,6 +26,14 @@ from src.services.audio_service import (
 )
 from src.services.report_service import get_session_report
 from src.services.transcript_service import get_session_transcript
+from src.services.system_design_service import (
+    upload_system_design_attempt,
+    get_current_diagram,
+    accept_diagram,
+    reject_diagram,
+    process_system_design_pipeline,
+    grade_system_design_session,
+)
 
 __all__ = [
     "create_profile",
@@ -51,4 +59,11 @@ __all__ = [
     "run_post_interview_pipeline",
     "get_session_report",
     "get_session_transcript",
+    "upload_system_design_attempt",
+    "get_current_diagram",
+    "accept_diagram",
+    "reject_diagram",
+    "process_system_design_pipeline",
+    "grade_system_design_session",
 ]
+

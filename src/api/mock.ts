@@ -16,8 +16,10 @@ import type {
   SessionDetail,
   SessionEnded,
   SessionListItem,
+  SessionMode,
   SessionQuestion,
   Suggestion,
+  SystemDesignDiagramResponse,
   Transcript,
 } from './types'
 
@@ -125,22 +127,26 @@ export const mockApi = {
     return companies
   },
 
-  async createSession(profileId: string, companyId: string, resumeId: string): Promise<SessionCreated> {
+  async createSession(profileId: string, companyId: string, resumeId: string, mode: SessionMode = 'behavioral'): Promise<SessionCreated> {
     await wait(400)
-    const picked = [...questionBank].sort(() => Math.random() - 0.5).slice(0, 4)
+    const design = mode === 'system_design'
+    const picked = design
+      ? [designPrompts[Math.floor(Math.random() * designPrompts.length)]!]
+      : [...questionBank].sort(() => Math.random() - 0.5).slice(0, 4)
     const questions: SessionQuestion[] = picked.map((text, i) => ({
       position: i + 1,
       question_id: uuid(),
       text,
-      category: 'Behavioral',
+      category: design ? 'System Design' : 'Behavioral',
       asked_at_ms: null,
     }))
     const session: MockSession = {
       id: uuid(),
+      mode,
       status: 'recording',
       company_id: companyId,
       resume_id: resumeId,
-      role_title: 'SWE Intern',
+      role_title: design ? 'Senior Systems Engineer' : 'SWE Intern',
       started_at: now(),
       ended_at: null,
       has_audio: false,
@@ -165,6 +171,7 @@ export const mockApi = {
       .reverse()
       .map((s) => ({
         id: s.id,
+        mode: s.mode,
         company: { id: s.company_id, name: companies.find((c) => c.id === s.company_id)?.name ?? 'Mock Company' },
         role_title: s.role_title,
         status: s.status,
@@ -199,6 +206,74 @@ export const mockApi = {
     }, 3000)
     return { session_id: id, status: 'processing' as const }
   },
+  // System design lifecycle, as on the server: recording -> interpreting ->
+  // awaiting_review -> grading -> done (or cancelled).
+  async uploadSystemDesignAttempt(id: string, _wav: Blob, _durationMs: number, attemptNumber = 1) {
+    await wait(800)
+    const session = getMockSession(id)
+    session.status = 'interpreting'
+    session.ended_at ??= now()
+    session.durationMs = Date.parse(session.ended_at) - Date.parse(session.started_at)
+    if (liveSessionId === id) liveSessionId = null
+    setTimeout(() => (session.status = 'awaiting_review'), 2500)
+    return { session_id: id, attempt_number: attemptNumber, status: 'interpreting' as const }
+  },
+  async getSystemDesignDiagram(id: string): Promise<SystemDesignDiagramResponse> {
+    await wait(300)
+    if (getMockSession(id).status === 'interpreting') {
+      return { session_id: id, attempt_number: 1, status: 'pending', graph: null, glasses_summary: null, can_retry: false }
+    }
+    return {
+      session_id: id,
+      attempt_number: 1,
+      status: 'ready' as const,
+      graph: {
+        schema_version: '1.0.0',
+        prompt: 'Design a URL Shortener',
+        nodes: [
+          { id: 'node_client', type: 'client', label: 'Client App', description: 'Web or mobile client' },
+          { id: 'node_cdn', type: 'cdn', label: 'Edge CDN', description: 'Caches hot URLs' },
+          { id: 'node_lb', type: 'load_balancer', label: 'Load Balancer', description: 'Balances HTTP traffic' },
+          { id: 'node_api', type: 'api_service', label: 'URL Service', description: 'Hash generation & redirection' },
+          { id: 'node_cache', type: 'cache', label: 'Redis Cache', description: 'Hot mappings cache' },
+          { id: 'node_db', type: 'database', label: 'PostgreSQL', description: 'Primary store' },
+          { id: 'node_queue', type: 'queue', label: 'Kafka Queue', description: 'Analytics queue' },
+          { id: 'node_worker', type: 'worker', label: 'Analytics Worker', description: 'Processes click metrics' },
+        ],
+        edges: [
+          { id: 'e1', source: 'node_client', target: 'node_cdn', label: 'GET /:short', protocol: 'HTTPS' },
+          { id: 'e2', source: 'node_cdn', target: 'node_lb', label: 'Cache miss', protocol: 'HTTPS' },
+          { id: 'e3', source: 'node_lb', target: 'node_api', label: 'Route', protocol: 'HTTPS' },
+          { id: 'e4', source: 'node_api', target: 'node_cache', label: 'Lookup', protocol: 'TCP' },
+          { id: 'e5', source: 'node_api', target: 'node_db', label: 'Query/Write', protocol: 'SQL' },
+          { id: 'e6', source: 'node_api', target: 'node_queue', label: 'Emit event', protocol: 'Async' },
+          { id: 'e7', source: 'node_queue', target: 'node_worker', label: 'Process', protocol: 'Batch' },
+        ],
+      },
+      glasses_summary: {
+        component_count: 8,
+        components: ['Client App', 'Edge CDN', 'Load Balancer', 'URL Service', 'Redis Cache', 'PostgreSQL', 'Kafka Queue', 'Analytics Worker'],
+      },
+      can_retry: false,
+    }
+  },
+  async acceptSystemDesignDiagram(id: string, _attemptNumber = 1) {
+    await wait(300)
+    const session = getMockSession(id)
+    session.status = 'grading'
+    setTimeout(() => {
+      session.status = 'done'
+      session.report_ready = true
+    }, 2500)
+    return { session_id: id, status: 'grading' as const }
+  },
+  async rejectSystemDesignDiagram(id: string, _attemptNumber = 1, _reason?: string) {
+    await wait(300)
+    const session = getMockSession(id)
+    session.status = 'cancelled'
+    return { session_id: id, status: 'cancelled' as const }
+  },
+
   async reprocess(id: string) {
     const session = getMockSession(id)
     session.status = 'processing'
@@ -214,6 +289,7 @@ export const mockApi = {
     await wait(300)
     const session = getMockSession(id)
     if (session.status !== 'done') return { session_id: id, status: session.status, report: null }
+    if (session.mode === 'system_design') return designReport(session)
     const asked = session.questions.filter((q) => q.asked_at_ms != null)
     const findings: Finding[] = asked.slice(0, 3).map((q, i) => ({
       id: `f-${q.position}`,
@@ -282,6 +358,61 @@ export const mockApi = {
   async getSuggestions(id: string) {
     return { session_id: id, items: getMockSession(id).suggestions }
   },
+}
+
+const designPrompts = [
+  'Design a URL shortener like Bitly',
+  'Design a news feed like Twitter',
+  'Design a rate limiter for a public API',
+]
+
+// Same shape as the backend's system design grading (summary_json + findings
+// with observation/recommendation).
+function designReport(session: MockSession): Report {
+  const at = session.questions[0]?.asked_at_ms ?? 0
+  return {
+    session_id: session.id,
+    status: 'done',
+    report: {
+      overall_score: scoreFor(session),
+      schema_version: '2.0.0',
+      summary: {
+        overview: 'Solid core design. Spend more time on failure modes and scaling the database.',
+        architecture_score: 82,
+        scalability_score: 71,
+        tradeoffs_score: 68,
+        communication_score: 85,
+        key_strengths: ['Put a cache in front of the database for hot reads', 'Used a queue to keep analytics off the request path'],
+        areas_for_growth: ['Explain how the database is replicated and fails over', 'Justify the cache eviction policy'],
+      },
+      findings: [
+        {
+          id: 'sd-1',
+          category: 'missing_component',
+          start_ms: at + 20000,
+          end_ms: at + 32000,
+          severity: 'medium',
+          title: 'No database replication',
+          details: {
+            observation: 'A single primary database with no replica or failover.',
+            recommendation: 'Add a read replica and automatic failover, and say how you would detect the outage.',
+          },
+        },
+        {
+          id: 'sd-2',
+          category: 'unjustified_choice',
+          start_ms: at + 45000,
+          end_ms: at + 55000,
+          severity: 'low',
+          title: 'Cache eviction not explained',
+          details: {
+            observation: 'Redis was added, but not how it stays within memory.',
+            recommendation: 'Mention LRU eviction and a TTL for short links.',
+          },
+        },
+      ],
+    },
+  }
 }
 
 function scoreFor(session: MockSession) {

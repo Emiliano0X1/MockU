@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Nav } from '../App'
 import { api, errorMessage } from '../api/client'
 import { BRIEFING_SECONDS } from '../api/config'
-import type { Company, Profile, ResumeInfo } from '../api/types'
+import type { Company, Profile, ResumeInfo, SessionMode } from '../api/types'
 import { BackButton, formatTime, Mocky } from '../components/ui'
 import { showOnGlasses } from '../glasses/bridge'
 import { useGlassesInput } from '../glasses/input'
@@ -18,9 +18,11 @@ function companySummary(company: Company) {
   return parts.filter(Boolean).join('\n\n')
 }
 
-type Props = { company: Company; profile: Profile; resume: ResumeInfo; nav: Nav }
+type Props = { company: Company; mode: SessionMode; profile: Profile; resume: ResumeInfo; nav: Nav }
 
-export function Briefing({ company, profile, resume, nav }: Props) {
+export function Briefing({ company, mode, profile, resume, nav }: Props) {
+  const design = mode === 'system_design'
+  const accent = design ? 'var(--aurora)' : 'var(--sky)'
   const [left, setLeft] = useState(BRIEFING_SECONDS)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
@@ -47,13 +49,13 @@ export function Briefing({ company, profile, resume, nav }: Props) {
     setStarting(true)
     setError('')
     try {
-      const session = await api.createSession(profile.id, company.id, resume.id)
+      const session = await api.createSession(profile.id, company.id, resume.id, mode)
       if (session.questions.length === 0) {
         // The server's question bank is empty; don't run an empty interview.
         api.deleteSession(session.id).catch(() => {})
         throw new Error('The server has no interview questions yet. Add some to the questions table and try again.')
       }
-      nav({ name: 'live', session, company })
+      nav(design ? { name: 'systemDesign', session, company } : { name: 'live', session, company })
     } catch (err) {
       startedRef.current = false
       setStarting(false)
@@ -77,7 +79,7 @@ export function Briefing({ company, profile, resume, nav }: Props) {
         <div className="stack" style={{ gap: 4, flex: 1 }}>
           <div className="row" style={{ gap: 10 }}>
             <BackButton onClick={() => nav({ name: 'home' })} />
-            <span className="eyebrow" style={{ color: 'var(--sky)' }}>Your interview is with</span>
+            <span className="eyebrow" style={{ color: accent }}>{design ? 'Your design challenge is with' : 'Your interview is with'}</span>
           </div>
           <h1 className="h1" style={{ fontSize: 32 }}>{company.name}</h1>
           {tagline && <span className="small" style={{ fontSize: 14 }}>{tagline}</span>}
@@ -90,7 +92,7 @@ export function Briefing({ company, profile, resume, nav }: Props) {
               cy="38"
               r="34"
               fill="none"
-              stroke="var(--sky)"
+              stroke={accent}
               strokeWidth="5"
               strokeLinecap="round"
               strokeDasharray={circumference}
@@ -117,7 +119,7 @@ export function Briefing({ company, profile, resume, nav }: Props) {
             <h2 className="eyebrow">Values</h2>
             {company.values.map((value, i) => (
               <div key={value.name} className="row" style={{ alignItems: 'flex-start', gap: 12 }}>
-                <span className="display" style={{ fontSize: 15, color: 'var(--sky)', width: 22, flexShrink: 0 }}>
+                <span className="display" style={{ fontSize: 15, color: accent, width: 22, flexShrink: 0 }}>
                   {String(i + 1).padStart(2, '0')}
                 </span>
                 <span className="stack" style={{ gap: 2 }}>
@@ -132,16 +134,34 @@ export function Briefing({ company, profile, resume, nav }: Props) {
         <section className="tip stack" style={{ gap: 4 }}>
           <span className="eyebrow" style={{ color: 'var(--aurora)' }}>Mocky's tip</span>
           <p style={{ fontSize: 14, lineHeight: '20px' }}>
-            Pick one value above and have a story from your resume that shows it. Questions appear in your glasses, one at a time.
+            {design
+              ? 'Think out loud: requirements first, then components, data flow, how it scales, and the trade-offs you made. The challenge appears in your glasses.'
+              : 'Pick one value above and have a story from your resume that shows it. Questions appear in your glasses, one at a time.'}
           </p>
         </section>
+
+        {design && (
+          <section className="stack" style={{ gap: 10 }}>
+            <h2 className="eyebrow">How it works</h2>
+            {[
+              'Read the challenge in your glasses, then explain your design out loud.',
+              'Press the glasses (or tap Done) when you finish. Mocky draws your diagram.',
+              'Review the diagram and submit it for grading. You get one attempt.',
+            ].map((step, i) => (
+              <div key={step} className="row" style={{ alignItems: 'flex-start', gap: 12 }}>
+                <span className="display" style={{ fontSize: 15, color: accent, width: 22, flexShrink: 0 }}>{i + 1}</span>
+                <span style={{ fontSize: 14, lineHeight: '20px' }}>{step}</span>
+              </div>
+            ))}
+          </section>
+        )}
       </div>
 
       <div className="spacer" />
       {error && <p className="error" role="alert" style={{ paddingBottom: 8 }}>{error}</p>}
       <div className="bottom-bar">
         <Mocky size={52} />
-        <button className="btn" style={{ flex: 1 }} disabled={starting} onClick={begin}>
+        <button className="btn" style={{ flex: 1, background: accent }} disabled={starting} onClick={begin}>
           {starting ? 'Starting…' : "I'm ready, start now"}
         </button>
       </div>

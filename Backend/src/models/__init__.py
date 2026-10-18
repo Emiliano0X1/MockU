@@ -31,6 +31,16 @@ from src.models.suggestion import (
     TestSuggestionRequest,
     TestSuggestionResponse,
 )
+from src.models.system_design import (
+    GraphNode,
+    GraphEdge,
+    GraphData,
+    GlassesDiagramSummary,
+    DiagramVersionResponse,
+    DiagramAcceptRequest,
+    DiagramRejectRequest,
+    SystemDesignAttemptUploadResponse,
+)
 
 __all__ = [
     "ProfileCreate",
@@ -67,4 +77,13 @@ __all__ = [
     "SuggestionListResponse",
     "TestSuggestionRequest",
     "TestSuggestionResponse",
+    "GraphNode",
+    "GraphEdge",
+    "GraphData",
+    "GlassesDiagramSummary",
+    "DiagramVersionResponse",
+    "DiagramAcceptRequest",
+    "DiagramRejectRequest",
+    "SystemDesignAttemptUploadResponse",
 ]
+

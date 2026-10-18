@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, errorMessage, getCompanies } from '../api/client'
-import type { BiometricSeries, Report, SessionDetail, Suggestion, TranscriptSegment } from '../api/types'
+import type { BiometricSeries, Report, SessionDetail, Suggestion, SystemDesignGraph, TranscriptSegment } from '../api/types'
 
 export type SessionReport = {
   detail: SessionDetail
@@ -9,12 +9,16 @@ export type SessionReport = {
   segments: TranscriptSegment[]
   heart: BiometricSeries
   tips: Suggestion[]
+  // System design only: the diagram the candidate submitted.
+  graph: SystemDesignGraph | null
 }
 
 type State =
   | { kind: 'loading' }
   | { kind: 'processing' } // audio uploaded, analysis running
   | { kind: 'missing' } // interview ended without an uploaded recording
+  | { kind: 'unsubmitted' } // system design: diagram drawn but never submitted
+  | { kind: 'cancelled' } // system design: the candidate cancelled the attempt
   | { kind: 'failed' } // analysis failed on the server
   | { kind: 'error'; message: string }
   | { kind: 'done'; data: SessionReport }
@@ -38,20 +42,25 @@ export function useSessionReport(sessionId: string) {
       try {
         const detail = await api.getSession(sessionId)
         if (cancelled) return
-        if (detail.status === 'processing') {
+        // Still working on the server: behavioral analysis, or drawing/grading a design.
+        if (detail.status === 'processing' || detail.status === 'interpreting' || detail.status === 'grading') {
           setState({ kind: 'processing' })
           timer = setTimeout(check, POLL_MS)
           return
         }
         if (detail.status === 'failed') return setState({ kind: 'failed' })
         if (detail.status === 'recording') return setState({ kind: 'missing' })
+        if (detail.status === 'awaiting_review') return setState({ kind: 'unsubmitted' })
+        if (detail.status === 'cancelled') return setState({ kind: 'cancelled' })
 
-        const [report, transcript, heart, tips, companies] = await Promise.all([
+        const design = detail.mode === 'system_design'
+        const [report, transcript, heart, tips, companies, diagram] = await Promise.all([
           api.getReport(sessionId),
           api.getTranscript(sessionId).catch(() => null),
           api.getBiometrics(sessionId).catch(() => null),
           api.getSuggestions(sessionId).catch(() => null),
           getCompanies().catch(() => []),
+          design ? api.getSystemDesignDiagram(sessionId).catch(() => null) : Promise.resolve(null),
         ])
         if (cancelled) return
         if (!report.report) {
@@ -65,6 +74,7 @@ export function useSessionReport(sessionId: string) {
           segments: transcript?.segments ?? [],
           heart: heart ?? { session_id: sessionId, stats: { count: 0, min_bpm: null, max_bpm: null, avg_bpm: null, baseline_bpm: null }, points: [] },
           tips: tips?.items ?? [],
+          graph: diagram?.graph ?? null,
         }
         cache.set(sessionId, data)
         setState({ kind: 'done', data })

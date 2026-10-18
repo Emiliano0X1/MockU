@@ -82,3 +82,34 @@ class AnalyzeInterviewResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     environment: str
+
+# --- System Design Mode Schemas ---
+
+class SystemDesignGraphRequest(BaseModel):
+    session_id: str
+    audio_url: str
+    prompt: str
+
+class NodeOut(BaseModel):
+    id: str
+    type: str
+    label: str
+    description: Optional[str] = None
+
+class EdgeOut(BaseModel):
+    id: str
+    source: str
+    target: str
+    label: Optional[str] = None
+    protocol: Optional[str] = None
+
+class GraphOut(BaseModel):
+    schema_version: str = "1.0.0"
+    prompt: Optional[str] = None
+    nodes: List[NodeOut] = []
+    edges: List[EdgeOut] = []
+
+class SystemDesignGraphResponse(BaseModel):
+    session_id: str
+    transcript: str
+    graph: GraphOut
