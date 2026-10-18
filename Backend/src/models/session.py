@@ -3,7 +3,17 @@ from typing import List, Literal, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
-SessionStatus = Literal["recording", "processing", "done", "failed"]
+SessionStatus = Literal[
+    "recording",
+    "processing",
+    "interpreting",
+    "awaiting_review",
+    "grading",
+    "done",
+    "failed",
+    "cancelled",
+]
+SessionMode = Literal["behavioral", "system_design"]
 
 
 class SessionCreate(BaseModel):
@@ -11,6 +21,7 @@ class SessionCreate(BaseModel):
     company_id: UUID
     resume_id: UUID
     role_title: Optional[str] = "SWE Intern"
+    mode: Optional[SessionMode] = "behavioral"
     question_count: Optional[int] = Field(6, ge=1, le=10)
 
 
@@ -24,20 +35,27 @@ class SessionQuestionItem(BaseModel):
 
 class SessionCreateResponse(BaseModel):
     id: UUID
-    status: Literal["recording"] = "recording"
+    mode: SessionMode = "behavioral"
+    status: str = "recording"
     started_at: datetime
     company_id: UUID
     resume_id: UUID
     role_title: str
+    current_attempt: int = 1
+    max_attempts: int = 1
     questions: List[SessionQuestionItem]
+
 
 
 class SessionDetailResponse(BaseModel):
     id: UUID
+    mode: SessionMode = "behavioral"
     status: str
     company_id: UUID
     resume_id: UUID
     role_title: str
+    current_attempt: int = 1
+    max_attempts: int = 1
     started_at: datetime
     ended_at: Optional[datetime] = None
     has_audio: bool
@@ -68,6 +86,7 @@ class SessionCompanyInfo(BaseModel):
 
 class SessionListItem(BaseModel):
     id: UUID
+    mode: SessionMode = "behavioral"
     company: SessionCompanyInfo
     role_title: Optional[str] = None
     status: str
@@ -75,6 +94,7 @@ class SessionListItem(BaseModel):
     ended_at: Optional[datetime] = None
     duration_ms: Optional[int] = None
     overall_score: Optional[int] = None
+
 
 
 class SessionListResponse(BaseModel):

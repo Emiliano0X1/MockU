@@ -22,6 +22,7 @@ def create_session(
     resume_id: str,
     role_title: str = "SWE Intern",
     question_count: int = 6,
+    mode: str = "behavioral",
 ) -> Dict[str, Any]:
     # 1. Verify existence of profile, company, resume
     get_profile_by_id(profile_id)
@@ -39,13 +40,18 @@ def create_session(
     # 2. Prepare interview_sessions row
     session_id = str(uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
+    is_system_design = mode == "system_design"
+    effective_question_count = 1 if is_system_design else question_count
 
     base_record = {
         "id": session_id,
         "company_id": str(company_id),
         "resume_id": str(resume_id),
-        "role_title": role_title or "SWE Intern",
+        "role_title": role_title or ("Senior Systems Engineer" if is_system_design else "SWE Intern"),
         "status": "recording",
+        "mode": mode,
+        "current_attempt": 1,
+        "max_attempts": 1,
         "started_at": started_at,
         "ended_at": None,
     }
@@ -58,18 +64,43 @@ def create_session(
             .execute()
         )
     except Exception:
-        res = (
-            supabase.table("interview_sessions")
-            .insert({**base_record, "user_id": str(profile_id)})
-            .execute()
-        )
+        # If columns mode/current_attempt/max_attempts are not yet migrated, fall back gracefully
+        try:
+            res = (
+                supabase.table("interview_sessions")
+                .insert({**base_record, "user_id": str(profile_id)})
+                .execute()
+            )
+        except Exception:
+            minimal_record = {
+                "id": session_id,
+                "company_id": str(company_id),
+                "resume_id": str(resume_id),
+                "role_title": role_title or "SWE Intern",
+                "status": "recording",
+                "started_at": started_at,
+                "ended_at": None,
+            }
+            try:
+                res = (
+                    supabase.table("interview_sessions")
+                    .insert({**minimal_record, "profile_id": str(profile_id)})
+                    .execute()
+                )
+            except Exception:
+                res = (
+                    supabase.table("interview_sessions")
+                    .insert({**minimal_record, "user_id": str(profile_id)})
+                    .execute()
+                )
 
     if not res.data:
         raise RuntimeError("Failed to create interview session.")
 
     created_session = res.data[0]
 
-    # 3. Pick question_count random questions from question bank
+
+    # 3. Pick questions from question bank based on mode
     try:
         q_res = (
             supabase.table("questions")
@@ -78,17 +109,27 @@ def create_session(
         )
         all_questions = q_res.data or []
 
-        eligible = [
-            q
-            for q in all_questions
-            if q.get("company_id") is None
-            or str(q.get("company_id")) == str(company_id)
-        ]
+        if is_system_design:
+            # Filter specifically for System Design questions
+            sd_questions = [
+                q for q in all_questions if q.get("category") == "System Design"
+            ]
+            eligible = sd_questions if sd_questions else all_questions
+        else:
+            # Behavioral: exclude System Design questions if possible
+            eligible = [
+                q
+                for q in all_questions
+                if (q.get("category") != "System Design")
+                and (
+                    q.get("company_id") is None
+                    or str(q.get("company_id")) == str(company_id)
+                )
+            ]
+            if not eligible:
+                eligible = all_questions
 
-        if not eligible:
-            eligible = all_questions
-
-        sample_size = min(question_count, len(eligible))
+        sample_size = min(effective_question_count, len(eligible))
         chosen_questions = (
             random.sample(eligible, sample_size) if sample_size > 0 else []
         )
@@ -140,11 +181,14 @@ def create_session(
 
     return {
         "id": session_id,
+        "mode": mode,
         "status": "recording",
         "started_at": created_session.get("started_at", started_at),
         "company_id": company_id,
         "resume_id": resume_id,
-        "role_title": role_title or "SWE Intern",
+        "role_title": role_title or ("Senior Systems Engineer" if is_system_design else "SWE Intern"),
+        "current_attempt": 1,
+        "max_attempts": 1,
         "questions": questions_output,
     }
 
@@ -195,22 +239,40 @@ def get_session_by_id(session_id: str) -> Dict[str, Any]:
         .execute()
     )
     has_audio = bool(audio_res.data and len(audio_res.data) > 0)
+    if not has_audio and session.get("mode") == "system_design":
+        # Check system_design_diagram_versions table
+        try:
+            diag_res = (
+                supabase.table("system_design_diagram_versions")
+                .select("id")
+                .eq("session_id", str(session_id))
+                .not_.is_("storage_path", "null")
+                .limit(1)
+                .execute()
+            )
+            has_audio = bool(diag_res.data and len(diag_res.data) > 0)
+        except Exception:
+            pass
 
     # 4. Compute report_ready
     report_ready = session.get("status") == "done"
 
     return {
         "id": session["id"],
+        "mode": session.get("mode", "behavioral"),
         "status": session["status"],
         "company_id": session["company_id"],
         "resume_id": session["resume_id"],
         "role_title": session.get("role_title", "SWE Intern"),
+        "current_attempt": session.get("current_attempt", 1),
+        "max_attempts": session.get("max_attempts", 1),
         "started_at": session["started_at"],
         "ended_at": session.get("ended_at"),
         "has_audio": has_audio,
         "report_ready": report_ready,
         "questions": questions_list,
     }
+
 
 
 def record_question_shown(
@@ -375,7 +437,7 @@ def list_sessions(
     try:
         query = (
             supabase.table("interview_sessions")
-            .select("id, role_title, status, started_at, ended_at, company_id, companies(id, name), reports(overall_score)", count="exact")
+            .select("id, mode, role_title, status, started_at, ended_at, company_id, companies(id, name), reports(overall_score)", count="exact")
             .eq("profile_id", str(profile_id))
         )
         if status:
@@ -423,6 +485,7 @@ def list_sessions(
         items.append(
             {
                 "id": r["id"],
+                "mode": r.get("mode", "behavioral"),
                 "company": company_obj,
                 "role_title": r.get("role_title"),
                 "status": r["status"],
@@ -434,6 +497,7 @@ def list_sessions(
         )
 
     return {"items": items, "total": total_count}
+
 
 
 def reprocess_session(session_id: str) -> Dict[str, Any]:

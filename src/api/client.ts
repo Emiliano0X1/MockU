@@ -122,15 +122,16 @@ const realApi = {
   listCompanies: () => request<Company[]>(endpoints.companies),
 
   // Starts the interview clock (t = 0) on the server.
-  createSession: (profileId: string, companyId: string, resumeId: string) =>
+  createSession: (profileId: string, companyId: string, resumeId: string, mode: 'behavioral' | 'system_design' = 'behavioral') =>
     request<SessionCreated>(
       endpoints.sessions,
       json('POST', {
         profile_id: profileId,
         company_id: companyId,
         resume_id: resumeId,
-        role_title: ROLE_TITLE,
-        question_count: QUESTION_COUNT,
+        role_title: mode === 'system_design' ? 'Senior Systems Engineer' : ROLE_TITLE,
+        question_count: mode === 'system_design' ? 1 : QUESTION_COUNT,
+        mode,
       }),
     ),
   getSession: (id: string) => request<SessionDetail>(endpoints.session(id)),
@@ -145,6 +146,28 @@ const realApi = {
     body.append('duration_ms', String(Math.round(durationMs)))
     return request<{ session_id: string; status: 'processing' }>(endpoints.audio(id), { method: 'POST', body })
   },
+  uploadSystemDesignAttempt: (id: string, wav: Blob, durationMs: number, attemptNumber = 1) => {
+    const body = new FormData()
+    body.append('file', wav, `attempt_${attemptNumber}.wav`)
+    body.append('attempt_number', String(attemptNumber))
+    body.append('duration_ms', String(Math.round(durationMs)))
+    return request<{ session_id: string; attempt_number: number; status: 'interpreting' }>(
+      endpoints.systemDesignAttempts(id),
+      { method: 'POST', body },
+    )
+  },
+  getSystemDesignDiagram: (id: string) =>
+    request<import('./types').SystemDesignDiagramResponse>(endpoints.systemDesignDiagram(id)),
+  acceptSystemDesignDiagram: (id: string, attemptNumber = 1) =>
+    request<{ session_id: string; status: 'grading' }>(
+      endpoints.systemDesignAccept(id),
+      json('POST', { attempt_number: attemptNumber }),
+    ),
+  rejectSystemDesignDiagram: (id: string, attemptNumber = 1, reason?: string) =>
+    request<{ session_id: string; status: 'cancelled' }>(
+      endpoints.systemDesignReject(id),
+      json('POST', { attempt_number: attemptNumber, reason }),
+    ),
   reprocess: (id: string) => request<{ session_id: string; status: 'processing' }>(endpoints.reprocess(id), { method: 'POST' }),
   deleteSession: (id: string) => request<void>(endpoints.session(id), { method: 'DELETE' }),
 
@@ -153,6 +176,7 @@ const realApi = {
   getBiometrics: (id: string) => request<BiometricSeries>(`${endpoints.biometrics(id)}?max_points=300`),
   getSuggestions: (id: string) => request<{ session_id: string; items: Suggestion[] }>(endpoints.suggestions(id)),
 }
+
 
 export type Api = typeof realApi
 

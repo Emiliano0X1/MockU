@@ -10,12 +10,16 @@ from app.schemas import (
     MetricsResult,
     AnalyzeInterviewRequest,
     AnalyzeInterviewResponse,
+    SystemDesignGraphRequest,
+    SystemDesignGraphResponse,
+    GraphOut,
 )
 from app.services.transcription import transcribe_audio
 from app.services.metrics import calculate_metrics
-from app.services.evaluations import evaluate_response, summarize_interview
+from app.services.evaluations import evaluate_response, summarize_interview, extract_architecture_graph
 from app.services.moments import answer_windows, build_segments, timed_findings
 from app.services.utils import extract_text_from_pdf
+
 
 load_dotenv()
 
@@ -149,3 +153,32 @@ def analyze_interview(request: AnalyzeInterviewRequest):
         traceback.print_exc()
         log(f"❌ Failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/analyze/system-design/graph", response_model=SystemDesignGraphResponse)
+def analyze_system_design_graph(request: SystemDesignGraphRequest):
+    """
+    Transcribes a system design attempt audio clip and extracts
+    an architectural graph (nodes and edges) using Gemini.
+    """
+    sid = request.session_id
+    try:
+        print(f"[{sid}] 1. Transcribing system design audio...")
+        transcription = transcribe_audio(request.audio_url)
+        full_text = transcription.get("full_text") or ""
+
+        print(f"[{sid}] 2. Extracting architecture graph with Gemini...")
+        graph_dict = extract_architecture_graph(request.prompt, full_text)
+
+        print(f"[{sid}] ✅ Graph extraction complete ({len(graph_dict.get('nodes', []))} nodes)")
+        return SystemDesignGraphResponse(
+            session_id=sid,
+            transcript=full_text,
+            graph=GraphOut(**graph_dict),
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[{sid}] ❌ Graph extraction failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

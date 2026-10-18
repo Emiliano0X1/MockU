@@ -30,9 +30,23 @@ from src.models.session import (
     SessionReprocessResponse,
 )
 from src.models.transcript import TranscriptResponse
+from src.models.system_design import (
+    DiagramVersionResponse,
+    DiagramAcceptRequest,
+    DiagramRejectRequest,
+    SystemDesignAttemptUploadResponse,
+)
 from src.services.audio_service import (
     run_post_interview_pipeline,
     upload_audio_and_start_processing,
+)
+from src.services.system_design_service import (
+    upload_system_design_attempt,
+    get_current_diagram,
+    accept_diagram,
+    reject_diagram,
+    process_system_design_pipeline,
+    grade_system_design_session,
 )
 from src.services.biometric_service import (
     get_biometric_series,
@@ -43,6 +57,7 @@ from src.services.pulsoid_service import start_pulsoid_for_session
 from src.services.report_service import get_session_report
 from src.services.session_service import (
     create_session,
+
     delete_session,
     end_session,
     get_session_by_id,
@@ -73,7 +88,9 @@ async def handle_create_session(payload: SessionCreate):
         resume_id=str(payload.resume_id),
         role_title=payload.role_title or "SWE Intern",
         question_count=payload.question_count or 6,
+        mode=payload.mode or "behavioral",
     )
+
 
     # Initialize live tracking session
     session_id = str(result["id"])
@@ -262,3 +279,93 @@ def handle_get_report(id: UUID):
 def handle_get_transcript(id: UUID):
     """Provide timestamped transcript segments for findings alignment."""
     return get_session_transcript(str(id))
+
+
+# ============================================================================
+# System Design Practice Mode Endpoints
+# ============================================================================
+
+@router.post(
+    "/{id}/system-design/attempts",
+    response_model=SystemDesignAttemptUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def handle_upload_system_design_attempt(
+    id: UUID,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    attempt_number: int = Form(1),
+    duration_ms: Optional[int] = Form(None),
+):
+    """
+    Submit audio explanation for single system design attempt.
+    Initiates asynchronous transcription and architectural diagram extraction.
+    """
+    file_bytes = await file.read()
+    result = upload_system_design_attempt(
+        session_id=str(id),
+        file_bytes=file_bytes,
+        original_filename=file.filename or "attempt_1.webm",
+        duration_ms=duration_ms,
+    )
+
+    # Launch background graph extraction pipeline
+    background_tasks.add_task(process_system_design_pipeline, str(id), attempt_number)
+
+    return result
+
+
+@router.get(
+    "/{id}/system-design/diagram",
+    response_model=DiagramVersionResponse,
+    status_code=status.HTTP_200_OK,
+)
+def handle_get_system_design_diagram(id: UUID):
+    """Retrieve the generated architectural graph and summary for dashboard / glasses."""
+    return get_current_diagram(session_id=str(id))
+
+
+@router.post(
+    "/{id}/system-design/diagram/accept",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def handle_accept_system_design_diagram(
+    id: UUID,
+    payload: DiagramAcceptRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Candidate accepts generated architecture diagram.
+    Freezes attempt, ends session tracking, and triggers prompt-rubric evaluation.
+    """
+    session_id = str(id)
+    attempt_num = payload.attempt_number or 1
+    res = accept_diagram(session_id=session_id, attempt_number=attempt_num)
+
+    # Close active live session manager
+    await live_manager.end_session(session_id)
+
+    # Launch background grading against rubric
+    background_tasks.add_task(grade_system_design_session, session_id, attempt_num)
+
+    return res
+
+
+@router.post(
+    "/{id}/system-design/diagram/reject",
+    status_code=status.HTTP_200_OK,
+)
+async def handle_reject_system_design_diagram(
+    id: UUID,
+    payload: DiagramRejectRequest,
+):
+    """
+    Candidate rejects diagram.
+    In single-attempt mode, marks the attempt as rejected and session as cancelled.
+    """
+    session_id = str(id)
+    attempt_num = payload.attempt_number or 1
+    res = reject_diagram(session_id=session_id, attempt_number=attempt_num, reason=payload.reason)
+    await live_manager.end_session(session_id)
+    return res
+

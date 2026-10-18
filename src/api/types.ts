@@ -159,10 +159,60 @@ export type Suggestion = {
 export type GlassesMessage =
   | { type: 'suggestion'; id: string; t_ms: number; text: string; severity: Severity; ttl_ms: number }
   | { type: 'sensor_status'; state: 'online' | 'offline'; last_bpm: number | null }
-  | { type: 'session_ended' }
+  | { type: 'session_ended'; overall_score?: number; text?: string }
+  | { type: 'diagram_ready'; attempt: number; components_count: number; top_components: string[]; can_retry: boolean }
+  | { type: 'grading_progress'; text: string }
   | { type: 'ping' }
 
 // App to server.
 export type GlassesReply = { type: 'ack'; suggestion_id: string } | { type: 'pong' }
 
 export type Health = { status: 'ok' | 'degraded'; database: 'ok' | 'unreachable'; time: string }
+
+// System Design Types
+export type SystemDesignNodeType =
+  | 'client'
+  | 'load_balancer'
+  | 'api_service'
+  | 'cache'
+  | 'database'
+  | 'queue'
+  | 'object_storage'
+  | 'cdn'
+  | 'worker'
+
+export type SystemDesignNode = {
+  id: string
+  type: SystemDesignNodeType | string
+  label: string
+  description?: string
+}
+
+export type SystemDesignEdge = {
+  id: string
+  source: string
+  target: string
+  label?: string
+  protocol?: string
+}
+
+export type SystemDesignGraph = {
+  schema_version: string
+  prompt?: string
+  nodes: SystemDesignNode[]
+  edges: SystemDesignEdge[]
+}
+
+export type SystemDesignDiagramResponse = {
+  session_id: string
+  attempt_number: number
+  status: 'pending' | 'ready' | 'accepted' | 'rejected' | 'failed'
+  graph: SystemDesignGraph | null
+  glasses_summary: {
+    component_count: number
+    components: string[]
+  } | null
+  can_retry: boolean
+  message?: string
+}
+

@@ -199,6 +199,60 @@ export const mockApi = {
     }, 3000)
     return { session_id: id, status: 'processing' as const }
   },
+  async uploadSystemDesignAttempt(id: string, _wav: Blob, _durationMs: number, attemptNumber = 1) {
+    await wait(800)
+    return { session_id: id, attempt_number: attemptNumber, status: 'interpreting' as const }
+  },
+  async getSystemDesignDiagram(id: string) {
+    await wait(300)
+    return {
+      session_id: id,
+      attempt_number: 1,
+      status: 'ready' as const,
+      graph: {
+        schema_version: '1.0.0',
+        prompt: 'Design a URL Shortener',
+        nodes: [
+          { id: 'node_client', type: 'client', label: 'Client App', description: 'Web or mobile client' },
+          { id: 'node_cdn', type: 'cdn', label: 'Edge CDN', description: 'Caches hot URLs' },
+          { id: 'node_lb', type: 'load_balancer', label: 'Load Balancer', description: 'Balances HTTP traffic' },
+          { id: 'node_api', type: 'api_service', label: 'URL Service', description: 'Hash generation & redirection' },
+          { id: 'node_cache', type: 'cache', label: 'Redis Cache', description: 'Hot mappings cache' },
+          { id: 'node_db', type: 'database', label: 'PostgreSQL', description: 'Primary store' },
+          { id: 'node_queue', type: 'queue', label: 'Kafka Queue', description: 'Analytics queue' },
+          { id: 'node_worker', type: 'worker', label: 'Analytics Worker', description: 'Processes click metrics' },
+        ],
+        edges: [
+          { id: 'e1', source: 'node_client', target: 'node_cdn', label: 'GET /:short', protocol: 'HTTPS' },
+          { id: 'e2', source: 'node_cdn', target: 'node_lb', label: 'Cache miss', protocol: 'HTTPS' },
+          { id: 'e3', source: 'node_lb', target: 'node_api', label: 'Route', protocol: 'HTTPS' },
+          { id: 'e4', source: 'node_api', target: 'node_cache', label: 'Lookup', protocol: 'TCP' },
+          { id: 'e5', source: 'node_api', target: 'node_db', label: 'Query/Write', protocol: 'SQL' },
+          { id: 'e6', source: 'node_api', target: 'node_queue', label: 'Emit event', protocol: 'Async' },
+          { id: 'e7', source: 'node_queue', target: 'node_worker', label: 'Process', protocol: 'Batch' },
+        ],
+      },
+      glasses_summary: {
+        component_count: 8,
+        components: ['Client App', 'Edge CDN', 'Load Balancer', 'URL Service', 'Redis Cache', 'PostgreSQL', 'Kafka Queue', 'Analytics Worker'],
+      },
+      can_retry: false,
+    }
+  },
+  async acceptSystemDesignDiagram(id: string, _attemptNumber = 1) {
+    await wait(300)
+    const session = getMockSession(id)
+    session.status = 'done'
+    session.report_ready = true
+    return { session_id: id, status: 'grading' as const }
+  },
+  async rejectSystemDesignDiagram(id: string, _attemptNumber = 1, _reason?: string) {
+    await wait(300)
+    const session = getMockSession(id)
+    session.status = 'failed'
+    return { session_id: id, status: 'cancelled' as const }
+  },
+
   async reprocess(id: string) {
     const session = getMockSession(id)
     session.status = 'processing'

@@ -12,18 +12,21 @@ import { Live } from './screens/Live'
 import { Moment } from './screens/Moment'
 import { Results } from './screens/Results'
 import { Setup } from './screens/Setup'
+import { SystemDesign } from './screens/SystemDesign'
 import { Mocky } from './components/ui'
 
 export type Route =
   | { name: 'loading' }
   | { name: 'setup' }
   | { name: 'home' }
-  | { name: 'briefing'; company: Company }
+  | { name: 'briefing'; company: Company; mode?: 'behavioral' | 'system_design' }
   | { name: 'live'; session: SessionCreated; company: Company }
+  | { name: 'systemDesign'; session: SessionCreated; company: Company }
   | { name: 'results'; sessionId: string }
   | { name: 'moment'; sessionId: string; findingId: string }
   | { name: 'history' }
   | { name: 'glassesTest' }
+
 
 export type Nav = (route: Route) => void
 
@@ -106,7 +109,10 @@ export function App() {
       return profile && resume && <Briefing company={route.company} profile={profile} resume={resume} nav={setRoute} />
     case 'live':
       return <Live session={route.session} company={route.company} nav={setRoute} />
+    case 'systemDesign':
+      return <SystemDesign session={route.session} company={route.company} nav={setRoute} />
     case 'results':
+
       return <Results sessionId={route.sessionId} nav={setRoute} />
     case 'moment':
       return <Moment sessionId={route.sessionId} findingId={route.findingId} nav={setRoute} />

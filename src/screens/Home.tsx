@@ -57,13 +57,21 @@ export function Home({ profile, resume, onProfile, onResume, nav, onSignOut }: P
   }
 
   // Mocky picks a random company from the server's catalog.
-  const start = async () => {
+  // Mocky picks a random company from the server's catalog.
+  const start = async (mode: 'behavioral' | 'system_design' = 'behavioral') => {
     setStarting(true)
     setError('')
     try {
       const companies = await getCompanies()
       if (companies.length === 0) throw new Error('No companies are set up on the server yet.')
-      nav({ name: 'briefing', company: companies[Math.floor(Math.random() * companies.length)]! })
+      const company = companies[Math.floor(Math.random() * companies.length)]!
+      if (mode === 'system_design') {
+        if (!resume) throw new Error('Please upload your resume first.')
+        const session = await api.createSession(profile.id, company.id, resume.id, 'system_design')
+        nav({ name: 'systemDesign', session, company })
+      } else {
+        nav({ name: 'briefing', company })
+      }
     } catch (err) {
       setError(errorMessage(err, "Couldn't start the interview. Try again."))
       setStarting(false)
@@ -74,36 +82,30 @@ export function Home({ profile, resume, onProfile, onResume, nav, onSignOut }: P
   // same sides as the head tilt. Tilting toward a side selects it (and holding
   // picks it); swiping moves the selection; a press picks the selected one.
   const [selected, setSelected] = useState<Side>('left')
-  const [showingSoon, setShowingSoon] = useState(false)
   const shownLabel = useRef('')
-  const soonTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const choose = (side: Side) => {
-    if (side === 'left') return start()
-    setShowingSoon(true)
-    clearTimeout(soonTimer.current)
-    soonTimer.current = setTimeout(() => setShowingSoon(false), 2500)
+    return start(side === 'left' ? 'behavioral' : 'system_design')
   }
 
   useGlassesInput((input) => {
-    if (!ready || starting || showingSoon) return
+    if (!ready || starting) return
     if (input.kind === 'up') setSelected('left')
     else if (input.kind === 'down') setSelected('right')
     else if (input.kind === 'press') choose(selected)
   })
 
+
   useEffect(() => {
     if (starting) return
     if (!ready) showOnGlasses(glassesTexts.welcomeNeedsResume(firstName))
-    else if (showingSoon) showOnGlasses(glassesTexts.systemDesignSoon())
     else {
       const view = glassesTexts.homeChoice(firstName, selected)
       shownLabel.current = view.label
       showOnGlasses(view)
     }
-  }, [ready, starting, firstName, selected, showingSoon])
+  }, [ready, starting, firstName, selected])
 
-  useEffect(() => () => clearTimeout(soonTimer.current), [])
 
   // Head tilt runs for as long as the welcome is up; changing the selection
   // must not restart it, since restarting recalibrates the resting position.
@@ -173,20 +175,21 @@ export function Home({ profile, resume, onProfile, onResume, nav, onSignOut }: P
 
       <section className="stack" style={{ gap: 14, paddingTop: 32, position: 'relative' }}>
         {ready && <Mocky size={52} className="in" style={{ position: 'absolute', right: 96, top: -2, transform: 'rotate(10deg)', zIndex: 1 }} />}
-        <button className="start behavioral" disabled={!ready || starting} onClick={start}>
+        <button className="start behavioral" disabled={!ready || starting} onClick={() => start('behavioral')}>
           <span className="stack" style={{ gap: 2 }}>
             <span className="title">Begin mock<br />behavioral</span>
             <span className="sub">{ready ? (starting ? 'Finding a company…' : 'About 20 min') : 'Upload a resume to unlock'}</span>
           </span>
           {icons.bigPlay}
         </button>
-        <button className="start system" disabled>
+        <button className="start system" disabled={!ready || starting} onClick={() => start('system_design')}>
           <span className="stack" style={{ gap: 2 }}>
             <span className="title">Begin mock<br />system design</span>
-            <span className="sub">Coming soon</span>
+            <span className="sub">{ready ? (starting ? 'Setting up challenge…' : '1 architectural challenge') : 'Upload a resume to unlock'}</span>
           </span>
           {icons.bigPlay}
         </button>
+
       </section>
 
       {ready && glasses.available && (

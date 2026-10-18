@@ -8,8 +8,12 @@ from pydantic import BaseModel
 # Cargamos las variables de entorno
 load_dotenv()
 
-# Cliente de Gemini (lee la llave desde GEMINI_API_KEY)
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+def get_client():
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not configured in .env file.")
+    return genai.Client(api_key=api_key)
+
 
 class Feedback(BaseModel):
     criterion: str
@@ -52,8 +56,9 @@ def evaluate_response(
 
     try:
         # Gemini 3.8 Flash: fast and cheap. Schema enforces the JSON shape.
-        response = client.models.generate_content(
+        response = get_client().models.generate_content(
             model="gemini-3.8-flash",
+
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -136,8 +141,9 @@ def summarize_interview(
     - If an answer is missing or empty, score it low and say so.
     """
 
-    response = client.models.generate_content(
+    response = get_client().models.generate_content(
         model="gemini-3.8-flash",
+
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",

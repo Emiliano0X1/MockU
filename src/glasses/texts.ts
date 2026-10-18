@@ -19,9 +19,10 @@ export const glassesTexts = {
     mocky: false,
     label: `Welcome, ${name}`,
     text: 'Tilt or swipe to choose. Press to start.',
-    choice: { left: '< Behavioral', right: 'System design >\n(coming soon)', selected },
+    choice: { left: '< Behavioral', right: 'System design >', selected },
   }),
-  systemDesignSoon: (): GlassesView => ({ mocky: true, label: 'System design', text: 'Coming soon. Tilt left for Behavioral.' }),
+  systemDesignSoon: (): GlassesView => ({ mocky: true, label: 'System design', text: 'System design mode selected. Press to start.' }),
+
   briefing: (company: string): GlassesView => ({
     mocky: false,
     label: 'Briefing',
@@ -50,7 +51,29 @@ export const glassesTexts = {
   answerReceived: (): GlassesView => ({ mocky: false, label: '', text: 'Got it. Take a breath.' }),
   analyzing: (): GlassesView => ({ mocky: true, label: "That's the interview", text: 'Mocky is reviewing your answers.' }),
   done: (): GlassesView => ({ mocky: false, label: 'Done', text: 'Your results are on your phone.' }),
+  systemDesignPrompt: (promptTitle: string): GlassesView => ({
+    mocky: true,
+    label: 'System Design',
+    text: `${promptTitle}\nExplain components, data flow & scale.`,
+  }),
+  systemDesignInterpreting: (): GlassesView => ({
+    mocky: true,
+    label: 'Interpreting',
+    text: 'Mocky is drafting your architecture diagram...',
+  }),
+  systemDesignReview: (count: number, summaryList: string[]): GlassesView => ({
+    mocky: false,
+    label: `Architecture (${count} items)`,
+    text: '2x press: Submit for grading\nTilt: Cancel',
+    list: summaryList,
+  }),
+  systemDesignGrading: (): GlassesView => ({
+    mocky: true,
+    label: 'Grading',
+    text: 'Mocky is grading your design against standards.',
+  }),
 }
+
 
 // Label line while the server's heart-rate tip is showing, e.g. "<3 Take a slow breath".
 export function tipLabel(text: string) {
