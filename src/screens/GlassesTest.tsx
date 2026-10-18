@@ -65,6 +65,7 @@ function ImuReadout() {
   const [sample, setSample] = useState<ImuSample | null>(null)
   const [lean, setLean] = useState<{ side: Side | null; progress: number }>({ side: null, progress: 0 })
   const [chosen, setChosen] = useState<Side | null>(null)
+  const [angle, setAngle] = useState<number | null>(null)
 
   useEffect(() => {
     const stops = [
@@ -72,6 +73,7 @@ function ImuReadout() {
       watchTilt({
         onLean: (side, progress) => setLean({ side, progress }),
         onChoose: (side) => setChosen(side),
+        onAngle: setAngle,
       }),
     ]
     return () => stops.forEach((stop) => stop.then((fn) => fn()))
@@ -98,6 +100,7 @@ function ImuReadout() {
         ))}
       </div>
       <p className="small">
+        Tilt: {angle == null ? 'calibrating…' : `${angle.toFixed(1)}°`} ·{' '}
         {lean.side ? `Leaning ${lean.side} · ${Math.round(lean.progress * 100)}%` : 'Centered'}
         {chosen && ` · last choice: ${chosen}`}
       </p>
@@ -105,7 +108,7 @@ function ImuReadout() {
         Recalibrate (hold head straight)
       </button>
       <p className="small">
-        Using {TILT.axis.toUpperCase()} axis, threshold {TILT.threshold}, mode "{TILT.mode}". Tilt your head and watch which value moves.
+        Using {TILT.axis.toUpperCase()} axis. Starts choosing past {TILT.enterDegrees}°, cancels inside {TILT.exitDegrees}°, hold {TILT.holdMs / 1000}s.
       </p>
       <p className="small" style={{ fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>
         imuControl: {String(debug.controlResult)} · events: {debug.events} · imu events: {debug.imuEvents}

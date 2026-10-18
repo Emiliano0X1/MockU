@@ -1,16 +1,18 @@
 import { ImuReportPace, type EvenAppBridge } from '@evenrealities/even_hub_sdk'
-import { ensureGlassesPage, getBridge } from './bridge'
+import { ensureGlassesPage, getBridge, onGlassesPageChange } from './bridge'
 
 // The SDK reports IMU x/y/z as accelerometer readings in g (the vector is ~1.0
-// long at rest), so a head tilt shifts gravity between axes. Tune these with
-// the live readout on the "Test glasses texts" screen.
+// long at rest). Head roll (ear toward shoulder) is measured as the angle of
+// gravity toward `axis`, normalized by the full vector so nodding barely
+// affects it. Tune these with the live readout on the "Test glasses texts" screen.
 export const TILT = {
-  axis: 'y' as 'x' | 'y' | 'z', // the axis that moves when the head tilts left/right
-  mode: 'angle' as 'angle' | 'rate', // 'rate' integrates the readings into an angle
-  threshold: 0.12, // readings are in g (gravity ~1.0 total); 0.12 is roughly a 7° tilt
+  axis: 'y' as 'x' | 'y' | 'z', // the axis that points out of the side of the glasses
   invert: false, // flip if tilting left is detected as right
-  holdMs: 1000, // how long a tilt must be held to choose
-  calibrationSamples: 8, // readings averaged as the resting position
+  enterDegrees: 10, // tilt past this to start choosing
+  exitDegrees: 6, // must come back inside this to cancel or choose again
+  smoothing: 0.35, // 0..1, weight of each new reading; lower is smoother but slower
+  holdMs: 800, // how long a tilt must be held to choose
+  calibrationSamples: 6, // readings averaged as the resting position
 }
 
 export type Side = 'left' | 'right'
@@ -19,12 +21,13 @@ export type ImuSample = { x: number; y: number; z: number }
 type Handlers = {
   onLean?: (side: Side | null, progress: number) => void // progress 0..1 while holding
   onChoose: (side: Side) => void
+  onAngle?: (degrees: number | null) => void // smoothed roll from rest; null while calibrating
 }
 
 // Starts IMU reporting and calls onChoose when a tilt is held. Returns a stop
 // function. Does nothing outside the Even App.
-export async function watchTilt({ onLean, onChoose }: Handlers): Promise<() => void> {
-  const detector = createDetector({ onLean, onChoose })
+export async function watchTilt(handlers: Handlers): Promise<() => void> {
+  const detector = createDetector(handlers)
   detectors.add(detector)
   const stop = await watchImu(detector.onSample)
   return () => {
@@ -52,11 +55,11 @@ let subscribed = false
 let imuOn = false
 let imuSync: Promise<void> = Promise.resolve()
 
-function syncImu(bridge: EvenAppBridge) {
+function syncImu(bridge: EvenAppBridge, force = false) {
   imuSync = imuSync
     .then(async () => {
       const want = listeners.size > 0
-      if (want === imuOn) return
+      if (want === imuOn && !(force && want)) return
       imuOn = want
       if (want) {
         await ensureGlassesPage()
@@ -84,6 +87,10 @@ export async function watchImu(onSample: (sample: ImuSample) => void): Promise<(
       const sample = { x: sys.imuData.x ?? 0, y: sys.imuData.y ?? 0, z: sys.imuData.z ?? 0 }
       listeners.forEach((listener) => listener(sample))
     })
+    // A page rebuild may reset IMU reporting on the glasses; turn it back on.
+    onGlassesPageChange(() => {
+      if (imuOn) syncImu(bridge, true)
+    })
   }
   // Wrap so two watchers passing the same function (e.g. a state setter under
   // StrictMode) get separate entries and one stopping can't remove the other.
@@ -107,64 +114,79 @@ function safeJson(value: unknown) {
   }
 }
 
-function createDetector({ onLean, onChoose }: Handlers) {
+// Roll in degrees: the angle of gravity toward TILT.axis, independent of how
+// strongly the sensor reads and mostly independent of pitch.
+function rollDegrees(sample: ImuSample) {
+  const magnitude = Math.hypot(sample.x, sample.y, sample.z)
+  if (magnitude < 0.1) return null // no usable gravity reading
+  const ratio = Math.max(-1, Math.min(1, sample[TILT.axis] / magnitude))
+  return (Math.asin(ratio) * 180) / Math.PI
+}
+
+function createDetector({ onLean, onChoose, onAngle }: Handlers) {
   const calibration: number[] = []
   let rest = 0
-  let angle = 0
-  let lastTime = 0
+  let smoothed = 0
   let leaning: Side | null = null
   let leanStart = 0
   let waitForNeutral = false
 
-  const recalibrate = () => {
-    calibration.length = 0
-    angle = 0
-    waitForNeutral = false
+  const cancelLean = () => {
     if (leaning) onLean?.(null, 0)
     leaning = null
   }
 
+  const recalibrate = () => {
+    calibration.length = 0
+    waitForNeutral = false
+    cancelLean()
+    onAngle?.(null)
+  }
+
   const onSample = (sample: ImuSample) => {
-    const value = sample[TILT.axis]
+    const roll = rollDegrees(sample)
+    if (roll === null) return
     const now = performance.now()
 
     if (calibration.length < TILT.calibrationSamples) {
-      calibration.push(value)
+      calibration.push(roll)
       rest = calibration.reduce((a, b) => a + b, 0) / calibration.length
-      lastTime = now
+      smoothed = 0
       return
     }
 
-    let offset: number
-    if (TILT.mode === 'rate') {
-      angle += (value - rest) * ((now - lastTime) / 1000)
-      offset = angle
-    } else {
-      offset = value - rest
-    }
-    lastTime = now
-    if (TILT.invert) offset = -offset
+    // Low-pass filter so single noisy readings don't start or cancel a tilt.
+    smoothed += ((roll - rest) - smoothed) * TILT.smoothing
+    const angle = TILT.invert ? -smoothed : smoothed
+    onAngle?.(angle)
+    const magnitude = Math.abs(angle)
+    const direction: Side = angle < 0 ? 'left' : 'right'
 
-    const side: Side | null = offset > TILT.threshold ? 'right' : offset < -TILT.threshold ? 'left' : null
-
-    if (side === null) {
+    // Back near center: cancel any hold and allow the next choice.
+    if (magnitude < TILT.exitDegrees) {
       waitForNeutral = false
-      if (leaning) onLean?.(null, 0)
-      leaning = null
+      cancelLean()
       return
     }
     if (waitForNeutral) return
-    if (side !== leaning) {
-      leaning = side
+
+    // Between exit and enter thresholds: keep an ongoing hold, don't start one.
+    if (!leaning) {
+      if (magnitude < TILT.enterDegrees) return
+      leaning = direction
+      leanStart = now
+    } else if (direction !== leaning) {
+      leaning = direction
       leanStart = now
     }
+
     const progress = Math.min(1, (now - leanStart) / TILT.holdMs)
-    onLean?.(side, progress)
+    onLean?.(leaning, progress)
     if (progress >= 1) {
+      const chosen = leaning
       waitForNeutral = true
       leaning = null
-      if (TILT.mode === 'rate') angle = 0
-      onChoose(side)
+      onChoose(chosen)
     }
   }
 

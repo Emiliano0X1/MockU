@@ -44,6 +44,14 @@ export function getBridge(): Promise<EvenAppBridge | null> {
 // Page updates run one at a time so two callers can't both create the startup page.
 let queue: Promise<unknown> = Promise.resolve()
 
+// Called after each page create/rebuild, e.g. to re-enable sensors the host
+// may reset along with the page.
+const pageListeners = new Set<() => void>()
+export function onGlassesPageChange(listener: () => void) {
+  pageListeners.add(listener)
+  return () => pageListeners.delete(listener)
+}
+
 export function showOnGlasses(view: GlassesView): Promise<boolean> {
   const run = queue.then(() => render(view))
   queue = run.catch(() => {})
@@ -101,6 +109,7 @@ async function render(view: GlassesView): Promise<boolean> {
       : (await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(page))) === StartUpPageCreateResult.success
     if (!ok) throw new Error('Glasses rejected the page')
     pageCreated = true
+    pageListeners.forEach((listener) => listener())
     if (view.mocky) {
       await bridge.updateImageRawData(
         new ImageRawDataUpdate({
