@@ -92,7 +92,8 @@ def get_session_report(session_id: str) -> Dict[str, Any]:
         "report": {
             "overall_score": rep_row.get("overall_score"),
             "schema_version": rep_row.get("schema_version", "1.0.0"),
-            "summary": rep_row.get("summary") or {},
+            # The column is summary_json in the current schema (summary in older ones).
+            "summary": rep_row.get("summary_json") or rep_row.get("summary") or {},
             "findings": findings_list,
         },
     }

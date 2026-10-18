@@ -4,6 +4,7 @@ ai-service (ai-service/app/main.py, POST /analyze/interview) and stores what
 comes back as transcript_segments, a report and report_findings.
 """
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from uuid import uuid4
@@ -87,28 +88,40 @@ def _save_results(session_id: str, analysis: Dict[str, Any], extra_findings: Lis
     now = datetime.now(timezone.utc).isoformat()
 
     # Transcript (replace any previous run).
+    logger.info("[%s] save 1/3: %d transcript segments", session_id, len(analysis["segments"]))
     supabase.table("transcript_segments").delete().eq("session_id", session_id).execute()
     segments = [{"id": str(uuid4()), "session_id": session_id, **s} for s in analysis["segments"]]
     if segments:
         supabase.table("transcript_segments").insert(segments).execute()
 
-    # Report. The summary needs a `summary jsonb` column on reports; without it,
-    # save the score anyway so the session still completes.
+    # Report. The summary column is `summary_json` (NOT NULL) in the current
+    # Supabase schema; older schemas called it `summary`.
     summary = analysis["summary"]
     report_id = str(uuid4())
     report = {"id": report_id, "session_id": session_id, "overall_score": summary["overall_score"], "schema_version": "1.0.0", "created_at": now}
-    try:
-        supabase.table("reports").insert({**report, "summary": summary}).execute()
-    except Exception as e:
-        logger.warning(
-            "[%s] reports.summary could not be saved (%s). Add it in Supabase: "
-            "alter table reports add column summary jsonb default '{}'::jsonb;",
-            session_id, str(e)[:120],
-        )
-        supabase.table("reports").insert(report).execute()
+    logger.info("[%s] save 2/3: report %s (score %s, summary keys %s)", session_id, report_id, summary.get("overall_score"), sorted(summary))
+    # Replace a previous run's report (and its findings first, which reference it).
+    old_ids = [r["id"] for r in supabase.table("reports").select("id").eq("session_id", session_id).execute().data or []]
+    if old_ids:
+        logger.info("[%s]   replacing %d previous report(s)", session_id, len(old_ids))
+        supabase.table("report_findings").delete().in_("report_id", old_ids).execute()
+        supabase.table("reports").delete().eq("session_id", session_id).execute()
+    errors = []
+    for column in ("summary_json", "summary"):
+        try:
+            supabase.table("reports").insert({**report, column: summary}).execute()
+            logger.info("[%s]   report saved with the summary in reports.%s", session_id, column)
+            break
+        except Exception as e:
+            errors.append(f"{column}: {e}")
+            logger.warning("[%s]   report insert with reports.%s failed: %s", session_id, column, e)
+    else:
+        raise RuntimeError("Could not save the report. " + " | ".join(errors))
 
     # Findings are linked to the report (the table has report_id, not session_id).
     findings = sorted(analysis["findings"] + extra_findings, key=lambda f: f["start_ms"])
+    logger.info("[%s] save 3/3: %d findings (%d from ai-service, %d heart-rate)",
+                session_id, len(findings), len(analysis["findings"]), len(extra_findings))
     rows = [
         {
             "id": str(uuid4()),
@@ -123,7 +136,22 @@ def _save_results(session_id: str, analysis: Dict[str, Any], extra_findings: Lis
         for f in findings
     ]
     if rows:
-        supabase.table("report_findings").insert(rows).execute()
+        try:
+            supabase.table("report_findings").insert(rows).execute()
+        except Exception as e:
+            # One bad row (e.g. a category the table's check constraint doesn't
+            # allow) shouldn't lose the whole report: save the rows that fit.
+            logger.warning("[%s]   batch findings insert failed (%s); inserting one by one", session_id, str(e)[:160])
+            saved = []
+            for row in rows:
+                try:
+                    supabase.table("report_findings").insert(row).execute()
+                    saved.append(row)
+                except Exception as row_error:
+                    logger.warning("[%s]   skipped finding category=%r title=%r: %s",
+                                   session_id, row["category"], row["title"], str(row_error)[:160])
+            logger.info("[%s]   saved %d of %d findings", session_id, len(saved), len(rows))
+            rows = saved
     logger.info("[%s] saved report %s: score %s, %d findings, %d transcript segments",
                 session_id, report_id, summary["overall_score"], len(rows), len(segments))
 
@@ -151,12 +179,17 @@ async def analyze_session(session_id: str) -> None:
         logger.info("[%s] sending %d questions and %d heart-rate events to %s/analyze/interview",
                     session_id, len(payload["questions"]), len(events), AI_SERVICE_URL)
 
+        started = time.monotonic()
         async with httpx.AsyncClient(timeout=AI_SERVICE_TIMEOUT_S) as client:
             response = await client.post(f"{AI_SERVICE_URL}/analyze/interview", json=payload)
         if response.status_code != 200:
             raise RuntimeError(f"ai-service returned {response.status_code}: {response.text[:300]}")
+        analysis = response.json()
+        logger.info("[%s] ai-service answered in %.0fs: score %s, %d segments, %d findings",
+                    session_id, time.monotonic() - started, analysis.get("summary", {}).get("overall_score"),
+                    len(analysis.get("segments", [])), len(analysis.get("findings", [])))
 
-        _save_results(session_id, response.json(), _biometric_findings(events))
+        _save_results(session_id, analysis, _biometric_findings(events))
         supabase.table("interview_sessions").update({"status": "done"}).eq("id", session_id).execute()
         logger.info("[%s] analysis done", session_id)
 
