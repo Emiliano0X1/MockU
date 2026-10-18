@@ -12,6 +12,23 @@ dist
 dist-ssr
 *.local
 
+# Environment files (secrets). .env.example files stay tracked.
+.env
+*.env
+**/.env
+.env.local
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+**/__pycache__/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,10 +39,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-
-.env.local
