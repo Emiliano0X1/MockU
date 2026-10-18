@@ -27,17 +27,26 @@ What problem inspired this project? Why does it matter, and what gap does it fil
 
 ## 🛠️ Tech Stack
 
-![Tech stack diagram](./assets/tech-stack-diagram.png)
-<!-- Replace with your diagram: add the image to an /assets folder and update the path above -->
+![MockU system architecture](./ai-service/docs/architecture.png)
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Frontend | React.js, Paper Design | … |
-| Backend | Node.js, Python | … |
-| Database | Supabase, PostgreSQL | … |
-| AI / APIs | Claude Code, Gemini API, Assembly AI  | … |
+| Frontend | React 19 + TypeScript | The app's screens (setup, briefing, live interview, results, history). It runs inside the Even App WebView on the phone. |
+| Frontend | Even Hub SDK (`@evenrealities/even_hub_sdk`) | Bridge to the Even Realities G2 glasses: draws questions, tips and the Mocky mascot on the 576×288 HUD, reads swipe, press and head-tilt input, and records the interview through the glasses mic. |
+| Frontend | Paper Design | UI and HUD mockups made before building the screens. |
+| Tooling | Node.js, Vite | Node runs the dev server and the build. Vite bundles the app into `dist/`, which is packaged as `mocku.ehpk` for the Even App. |
+| Backend | Python, FastAPI (`:8000`) | Main API: profiles, companies, resumes, sessions, biometrics and audio upload. Runs the analysis as a background task and saves the report. |
+| Backend | WebSockets | Pushes live tips, sensor status and session events to the glasses while the interview runs. |
+| Backend | Pulsoid | Streams live heart rate from an Apple Watch. A spike detector compares it to a baseline and sends a calming tip to the HUD. |
+| Backend | PyMuPDF, pypdf | Extracts the text of the uploaded resume PDF once, so the AI can personalize the feedback. |
+| Database | Supabase (PostgreSQL) | Stores profiles, companies, questions, sessions, heart-rate samples, live tips, transcripts and reports. |
+| Database | Supabase Storage | Holds resume PDFs (`resumes/`) and interview recordings (`audio/`). The backend shares a signed audio URL with the AI service. |
+| AI | Python, FastAPI (`:8001`) | Stateless analysis service: transcribes the interview, measures delivery, finds timed moments and builds the report. Only the backend calls it. |
+| AI | AssemblyAI | Speech-to-text with word-level timestamps, used to split the transcript into one answer per question and to find pauses, filler words and repetitions. |
+| AI | Google Gemini (`gemini-3.8-flash`) | Gives feedback on each answer and scores the whole interview (four 0–100 scores, overview, strengths, areas for growth), using the resume, role and company values. |
+| Dev tools | Claude Code | AI coding assistant used while building the project. |
 
-**How it fits together:** A sentence or two describing how data flows through the system.
+**How it fits together:** The glasses show each question and record the whole interview while Pulsoid streams heart rate to the backend, which pushes calming tips back to the HUD over a WebSocket. When the interview ends, the app uploads the recording; the backend stores it in Supabase and sends it with the questions, resume and heart-rate spikes to the AI service. There, AssemblyAI transcribes it and Gemini evaluates it. The backend saves the report, and the app shows it with the transcript and heart-rate chart on a shared timeline. See [ai-service/README.md](./ai-service/README.md) for the full data flow.
 
 ## 🚀 Getting Started
 
@@ -69,6 +78,7 @@ npm run build      # build dist/ to package for the Even App on the G2 glasses
 No watch? Simulate a heart-rate spike:
 ```bash
 python Backend/scripts/simulate_bpm.py --session-id <SESSION_ID> --scenario sustained_spike
+```
 
 ## 👥 Team
 
