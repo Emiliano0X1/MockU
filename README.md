@@ -41,12 +41,34 @@ What problem inspired this project? Why does it matter, and what gap does it fil
 
 ## 🚀 Getting Started
 
+**Needs:** Node 20, Python 3.11, a Supabase project, and API keys for Gemini and AssemblyAI (Pulsoid is optional).
+
 ```bash
-git clone https://github.com/your-username/your-repo.git
-cd your-repo
-npm install
-npm run dev
+git clone https://github.com/Emiliano0X1/MockU.git && cd MockU
 ```
+
+**1. AI service** (port 8001): copy `ai-service/.env.example` to `.env` and set `GEMINI_API_KEY` and `ASSEMBLYAI_API_KEY`.
+```bash
+cd ai-service && pip install -r requirements.txt
+uvicorn app.main:app --port 8001
+```
+
+**2. Backend** (port 8000): copy `Backend/.env.example` to `.env` and set `SUPABASE_URL` and `SUPABASE_KEY` (plus `PULSOID_ACCESS_TOKEN` and `PULSOID_ENABLED=true` for live heart rate).
+```bash
+cd Backend && pip install -r requirements.txt
+python -m src.app
+```
+
+**3. App:** copy `.env.example` to `.env.local` and set `VITE_API_URL=http://<your-LAN-IP>:8000`. Leave it empty to try the whole flow with the built-in mock server.
+```bash
+npm install
+npm run dev        # browser preview
+npm run build      # build dist/ to package for the Even App on the G2 glasses
+```
+
+No watch? Simulate a heart-rate spike:
+```bash
+python Backend/scripts/simulate_bpm.py --session-id <SESSION_ID> --scenario sustained_spike
 
 ## 👥 Team
 
