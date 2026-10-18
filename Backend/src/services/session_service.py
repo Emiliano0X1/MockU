@@ -370,18 +370,21 @@ def list_sessions(
     limit = min(max(1, limit), 50)
     offset = max(0, offset)
 
-    # Try profile_id first, fallback to user_id
-    query = (
-        supabase.table("interview_sessions")
-        .select("id, role_title, status, started_at, ended_at, company_id, companies(id, name), reports(overall_score)", count="exact")
-        .eq("profile_id", str(profile_id))
-    )
-    if status:
-        query = query.eq("status", status)
+    # Try profile_id first, fallback to user_id. Querying a column the table
+    # doesn't have raises, so that also falls back.
+    try:
+        query = (
+            supabase.table("interview_sessions")
+            .select("id, role_title, status, started_at, ended_at, company_id, companies(id, name), reports(overall_score)", count="exact")
+            .eq("profile_id", str(profile_id))
+        )
+        if status:
+            query = query.eq("status", status)
+        res = query.order("started_at", desc=True).range(offset, offset + limit - 1).execute()
+    except Exception:
+        res = None
 
-    res = query.order("started_at", desc=True).range(offset, offset + limit - 1).execute()
-
-    if not res.data and res.count == 0:
+    if res is None or (not res.data and res.count == 0):
         # Fallback query using user_id column
         fallback_query = (
             supabase.table("interview_sessions")
