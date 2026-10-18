@@ -1,92 +1,210 @@
+import { useEffect, useState } from 'react'
 import type { Nav } from '../App'
-import { icons, Meter, Mocky } from '../components/ui'
-import { useResult } from './useResult'
+import { api, errorMessage } from '../api/client'
+import type { Finding, Severity } from '../api/types'
+import { HeartChart } from '../components/HeartChart'
+import { icons, Mocky } from '../components/ui'
+import { showOnGlasses } from '../glasses/bridge'
+import { glassesTexts } from '../glasses/texts'
+import { forgetSessionReport, formatMs, useSessionReport, type SessionReport } from './useSessionReport'
 
-export function Results({ resultId, nav }: { resultId: string; nav: Nav }) {
-  const { result, error } = useResult(resultId)
+export const severityTag: Record<Severity, string> = { high: 'tag bad', medium: 'tag warn', low: 'tag good' }
+export const severityColor: Record<Severity, string> = { high: '#E5484D', medium: '#F5A524', low: '#2FA866' }
 
-  if (!result) {
+export function Results({ sessionId, nav }: { sessionId: string; nav: Nav }) {
+  const { state, retry, reprocess } = useSessionReport(sessionId)
+
+  useEffect(() => {
+    if (state.kind === 'done') showOnGlasses(glassesTexts.done())
+  }, [state.kind])
+
+  if (state.kind !== 'done') {
+    const message = {
+      loading: 'Loading your results…',
+      processing: 'Mocky is reviewing your answers. This takes a moment.',
+      missing: "This interview ended before its recording was saved, so there's nothing to review.",
+      failed: 'Mocky ran into a problem reviewing this interview.',
+      error: state.kind === 'error' ? state.message : '',
+    }[state.kind]
     return (
       <main className="screen stripes center" style={{ justifyContent: 'center', gap: 12 }}>
-        <Mocky size={96} />
-        <p className={error ? 'error' : 'muted'}>{error || 'Loading your results…'}</p>
-        {error && <button className="btn ghost" onClick={() => nav({ name: 'home' })}>Back home</button>}
+        <Mocky size={96} className={state.kind === 'processing' ? 'in' : ''} />
+        <p className={state.kind === 'error' || state.kind === 'failed' ? 'error' : 'muted'} style={{ textAlign: 'center' }}>{message}</p>
+        {state.kind === 'failed' && <button className="btn" onClick={reprocess}>Try the review again</button>}
+        {state.kind === 'error' && <button className="btn" onClick={retry}>Try again</button>}
+        {state.kind !== 'loading' && state.kind !== 'processing' && (
+          <button className="btn ghost" onClick={() => nav({ name: 'home' })}>Back home</button>
+        )}
       </main>
     )
   }
 
-  const weakClipCount = result.clips.length
+  return <ReportView data={state.data} nav={nav} />
+}
+
+function ReportView({ data, nav }: { data: SessionReport; nav: Nav }) {
+  const { detail, report, heart, tips, companyName } = data
+  const { summary, findings } = report
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const minutes = detail.ended_at ? Math.max(1, Math.round((Date.parse(detail.ended_at) - Date.parse(detail.started_at)) / 60000)) : null
+  const subscores = [
+    { label: 'Communication', value: summary.communication_score },
+    { label: 'Technical depth', value: summary.technical_depth_score },
+    { label: 'Composure', value: summary.composure_score },
+  ].filter((s): s is { label: string; value: number } => typeof s.value === 'number')
+
+  const remove = async () => {
+    try {
+      await api.deleteSession(detail.id)
+      forgetSessionReport(detail.id)
+      nav({ name: 'history' })
+    } catch (err) {
+      setConfirmDelete(false)
+      setDeleteError(errorMessage(err, "Couldn't delete this mock."))
+    }
+  }
 
   return (
     <main className="screen">
       <section className="score-hero stack" style={{ gap: 10 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <span className="eyebrow" style={{ color: 'var(--sky)' }}>
-            {result.companyName} mock · {Math.round(result.durationSeconds / 60)} min
+            {companyName} mock{minutes ? ` · ${minutes} min` : ''}
           </span>
           <button className="link" style={{ fontSize: 14 }} onClick={() => nav({ name: 'home' })}>Done</button>
         </div>
         <div className="row" style={{ alignItems: 'flex-end', gap: 8 }}>
-          <span className="display" style={{ fontWeight: 700, fontSize: 104, lineHeight: '96px', letterSpacing: '-0.03em' }}>{result.score}</span>
-          <span className="stack" style={{ gap: 2, paddingBottom: 8 }}>
-            <span className="display" style={{ fontWeight: 500, fontSize: 22, color: 'var(--ink-3)' }}>/ 100</span>
-            {result.scoreDelta != null && (
-              <span style={{ fontWeight: 700, fontSize: 13, color: result.scoreDelta >= 0 ? 'var(--good)' : 'var(--bad-ink)' }}>
-                {result.scoreDelta >= 0 ? '+' : ''}{result.scoreDelta} since last mock
-              </span>
-            )}
+          <span className="display" style={{ fontWeight: 700, fontSize: 104, lineHeight: '96px', letterSpacing: '-0.03em' }}>
+            {report.overall_score ?? '--'}
           </span>
+          <span className="display" style={{ fontWeight: 500, fontSize: 22, color: 'var(--ink-3)', paddingBottom: 8 }}>/ 100</span>
         </div>
-        <p style={{ fontSize: 16, lineHeight: '23px', maxWidth: 240 }}>{result.headline}</p>
+        <p style={{ fontSize: 16, lineHeight: '23px', maxWidth: 240 }}>{summary.overview ?? headline(report.overall_score)}</p>
         <Mocky size={112} className="in" style={{ position: 'absolute', right: 8, bottom: 6, transform: 'rotate(8deg)' }} />
       </section>
 
-      <section className="stack" style={{ paddingTop: 22 }}>
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', paddingBottom: 6 }}>
-          <h2 className="h2">Where you slipped</h2>
-        </div>
-        {result.signals.map((signal) => (
-          <button
-            key={signal.key}
-            className="signal-row"
-            disabled={signal.clipIds.length === 0}
-            onClick={() => nav({ name: 'clips', resultId, clipId: signal.clipIds[0] })}
-          >
-            <span className="stack" style={{ flex: 1, gap: 2 }}>
-              <span style={{ fontWeight: 700, fontSize: 15 }}>{signal.label}</span>
-              <span className="small">{signal.detail}</span>
+      {subscores.length > 0 && (
+        <section className="stack" style={{ gap: 10, paddingTop: 22 }}>
+          {subscores.map((s) => (
+            <div key={s.label} className="subscore">
+              <span style={{ fontWeight: 700, fontSize: 14, width: 120 }}>{s.label}</span>
+              <span className="subscore-bar"><span style={{ width: `${Math.max(0, Math.min(100, s.value))}%` }} /></span>
+              <span className="display" style={{ fontSize: 16, width: 32, textAlign: 'right' }}>{s.value}</span>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {findings.length > 0 && (
+        <section className="stack" style={{ paddingTop: 24 }}>
+          <h2 className="h2" style={{ paddingBottom: 6 }}>Moments to review</h2>
+          {findings.map((finding) => (
+            <FindingRow key={finding.id} finding={finding} onClick={() => nav({ name: 'moment', sessionId: detail.id, findingId: finding.id })} />
+          ))}
+        </section>
+      )}
+
+      <section className="card stack" style={{ gap: 8, marginTop: 24 }}>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>Heart rate</span>
+          {heart.stats.count > 0 && (
+            <span className="small" style={{ fontSize: 12 }}>
+              avg {Math.round(heart.stats.avg_bpm ?? 0)} · peak {heart.stats.max_bpm}
+              {heart.stats.baseline_bpm != null && ` · resting ${heart.stats.baseline_bpm}`}
             </span>
-            <Meter severity={signal.severity} />
-            <span className="play" style={{ visibility: signal.clipIds.length ? 'visible' : 'hidden' }}>{icons.play()}</span>
-          </button>
-        ))}
+          )}
+        </div>
+        <HeartChart heart={heart} bands={findings.map((f) => ({ start_ms: f.start_ms, end_ms: f.end_ms, color: severityColor[f.severity] }))} />
       </section>
 
-      <section className="stack" style={{ gap: 12, paddingTop: 26 }}>
-        <h2 className="h2">Mocky's read</h2>
-        <div className="read" style={{ borderColor: 'var(--good)' }}>
-          <span className="eyebrow" style={{ color: 'var(--good)' }}>What landed</span>
-          <p style={{ fontSize: 15, lineHeight: '22px' }}>{result.strengths}</p>
-        </div>
-        <div className="read" style={{ borderColor: 'var(--bad)' }}>
-          <span className="eyebrow" style={{ color: 'var(--bad)' }}>What to fix</span>
-          <p style={{ fontSize: 15, lineHeight: '22px' }}>{result.weaknesses}</p>
-        </div>
-      </section>
+      {(summary.key_strengths?.length || summary.areas_for_growth?.length) && (
+        <section className="stack" style={{ gap: 12, paddingTop: 26 }}>
+          <h2 className="h2">Mocky's read</h2>
+          {!!summary.key_strengths?.length && (
+            <div className="read" style={{ borderColor: 'var(--good)' }}>
+              <span className="eyebrow" style={{ color: 'var(--good)' }}>What landed</span>
+              <BulletList items={summary.key_strengths} />
+            </div>
+          )}
+          {!!summary.areas_for_growth?.length && (
+            <div className="read" style={{ borderColor: 'var(--bad)' }}>
+              <span className="eyebrow" style={{ color: 'var(--bad)' }}>What to fix</span>
+              <BulletList items={summary.areas_for_growth} />
+            </div>
+          )}
+        </section>
+      )}
+
+      {tips.length > 0 && (
+        <section className="stack" style={{ gap: 8, paddingTop: 24 }}>
+          <h2 className="eyebrow">Tips Mocky gave you live</h2>
+          {tips.map((tip) => (
+            <div key={tip.id} className="row" style={{ gap: 10 }}>
+              <span className="small" style={{ width: 40, flexShrink: 0, fontWeight: 700 }}>{formatMs(tip.t_ms)}</span>
+              <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{tip.text}</span>
+              {tip.bpm_at_trigger != null && <span className="small">{tip.bpm_at_trigger} bpm</span>}
+            </div>
+          ))}
+        </section>
+      )}
 
       <section className="stack" style={{ gap: 10, paddingTop: 24 }}>
-        {weakClipCount > 0 && (
-          <button className="btn" onClick={() => nav({ name: 'clips', resultId })}>
-            {icons.play('#fff')}
-            Watch your weak clips
-          </button>
-        )}
-        <button className="btn ghost" onClick={() => nav({ name: 'home' })}>Retry with a new company</button>
+        <button className="btn" onClick={() => nav({ name: 'home' })}>Retry with a new company</button>
         <p className="row small" style={{ justifyContent: 'center', gap: 6, paddingTop: 4 }}>
           {icons.check('#2FA866', 14)}
-          Saved to My mocks in your account
+          Saved to My mocks
         </p>
+        {deleteError && <p className="error" role="alert">{deleteError}</p>}
+        <button className="link" style={{ color: 'var(--bad-ink)', fontSize: 14, alignSelf: 'center' }} onClick={() => setConfirmDelete(true)}>
+          Delete this mock
+        </button>
       </section>
+
+      {confirmDelete && (
+        <div className="scrim" onClick={() => setConfirmDelete(false)}>
+          <div className="sheet rise stack" style={{ gap: 12, paddingTop: 24 }} onClick={(e) => e.stopPropagation()}>
+            <h2 className="h2">Delete this mock?</h2>
+            <p className="muted">The recording, transcript and report are removed from the server. This can't be undone.</p>
+            <button className="btn" style={{ background: 'var(--bad)' }} onClick={remove}>Delete</button>
+            <button className="btn ghost" onClick={() => setConfirmDelete(false)}>Keep it</button>
+          </div>
+        </div>
+      )}
     </main>
   )
+}
+
+export function FindingRow({ finding, onClick }: { finding: Finding; onClick: () => void }) {
+  return (
+    <button className="list-row" onClick={onClick}>
+      <span className={severityTag[finding.severity]} style={{ width: 64, textAlign: 'center', fontSize: 12, fontWeight: 700, lineHeight: '20px', flexShrink: 0, textTransform: 'capitalize' }}>
+        {finding.severity}
+      </span>
+      <span className="stack" style={{ flex: 1, gap: 2 }}>
+        <span style={{ fontWeight: 700, fontSize: 15 }}>{finding.title}</span>
+        <span className="small">
+          at {formatMs(finding.start_ms)} · {finding.category}
+        </span>
+      </span>
+      {icons.chevron}
+    </button>
+  )
+}
+
+function BulletList({ items }: { items: string[] }) {
+  return (
+    <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {items.map((item) => (
+        <li key={item} style={{ fontSize: 15, lineHeight: '22px' }}>{item}</li>
+      ))}
+    </ul>
+  )
+}
+
+function headline(score: number | null) {
+  if (score == null) return 'Here is how your interview went.'
+  if (score >= 85) return 'Strong interview. Polish the moments below.'
+  if (score >= 70) return 'Solid answers, with a few moments to work on.'
+  return 'A few habits are holding you back. Start with the moments below.'
 }

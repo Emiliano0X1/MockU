@@ -1,41 +1,46 @@
-import { getToken } from './client'
 import { API_URL, USE_MOCK, endpoints } from './config'
-import { mockLive } from './mock'
-import type { LiveCommand, LiveEvent } from './types'
+import { mockGlassesSocket } from './mock'
+import type { GlassesMessage, GlassesReply } from './types'
 
-export type LiveConnection = {
-  send: (command: LiveCommand) => void
-  close: () => void
-}
+export type GlassesSocket = { close: () => void }
 
-export function connectLive(interviewId: string, onEvent: (event: LiveEvent) => void): LiveConnection {
-  if (USE_MOCK) return mockLive(onEvent)
+// Connects to the server's live channel for a recording session. Answers
+// pings and acknowledges suggestions; everything else goes to onMessage.
+export function connectGlassesSocket(
+  sessionId: string,
+  onMessage: (message: GlassesMessage) => void,
+  onDisconnect?: () => void,
+): GlassesSocket {
+  if (USE_MOCK) return mockGlassesSocket(onMessage)
 
-  const url = new URL(API_URL + endpoints.live(interviewId))
+  const url = new URL(API_URL + endpoints.glassesSocket(sessionId))
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  const token = getToken()
-  if (token) url.searchParams.set('token', token)
-
+  let closedByUs = false
   const socket = new WebSocket(url)
-  const queue: LiveCommand[] = []
+  const reply = (message: GlassesReply) => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message))
+  }
 
-  socket.onopen = () => {
-    for (const command of queue.splice(0)) socket.send(JSON.stringify(command))
-  }
-  socket.onmessage = (message) => {
+  socket.onmessage = (event) => {
+    let message: GlassesMessage
     try {
-      onEvent(JSON.parse(message.data) as LiveEvent)
+      message = JSON.parse(event.data)
     } catch {
-      console.warn('Ignoring malformed live event', message.data)
+      console.warn('Ignoring malformed live message', event.data)
+      return
     }
+    if (message.type === 'ping') return reply({ type: 'pong' })
+    if (message.type === 'suggestion') reply({ type: 'ack', suggestion_id: message.id })
+    onMessage(message)
   }
-  socket.onerror = () => onEvent({ type: 'error', message: 'Lost connection to the interview server.' })
+  socket.onclose = () => {
+    if (!closedByUs) onDisconnect?.()
+  }
 
   return {
-    send(command) {
-      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(command))
-      else queue.push(command)
+    close() {
+      closedByUs = true
+      socket.close()
     },
-    close: () => socket.close(),
   }
 }

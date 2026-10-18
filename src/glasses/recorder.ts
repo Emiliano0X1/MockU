@@ -1,55 +1,63 @@
 import { AudioInputSource } from '@evenrealities/even_hub_sdk'
-import { MIC_SAMPLE_RATE, SILENCE_RMS_THRESHOLD, SILENCE_SECONDS_TO_END } from '../api/config'
+import { MIC_SAMPLE_RATE, SILENCE_RMS_THRESHOLD } from '../api/config'
 import { ensureGlassesPage, getBridge } from './bridge'
 
-export type Recording = {
-  stop: () => Promise<Blob>
+const BYTES_PER_MS = (MIC_SAMPLE_RATE * 2) / 1000 // 16-bit mono
+
+export type SessionRecording = {
+  // Stops the mic and returns the whole interview as one WAV.
+  stop: () => Promise<{ wav: Blob; durationMs: number }>
 }
 
 type Options = {
-  onLevel: (level: number) => void // 0..1, for the live waveform
-  onSilenceEnd: (wav: Blob) => void // the user finished answering
+  // performance.now() at the session's t = 0. The audio is padded with
+  // silence at the start so its timeline matches the server's *_ms values.
+  startedAt: number
+  // Called for every audio frame: 0..1 loudness for the waveform, and
+  // whether the frame is loud enough to count as speech.
+  onAudio: (level: number, speech: boolean) => void
 }
 
-// Records one answer from the glasses mic and ends it after a stretch of
-// silence that follows speech. Outside the Even App it simulates an answer.
-export async function recordAnswer({ onLevel, onSilenceEnd }: Options): Promise<Recording> {
+// Records the glasses mic for the whole interview. Outside the Even App it
+// simulates speech and returns a silent WAV of the same length.
+export async function recordSession({ startedAt, onAudio }: Options): Promise<SessionRecording> {
   const bridge = await getBridge()
-  if (!bridge) return simulate({ onLevel, onSilenceEnd })
+  if (!bridge) return simulate({ startedAt, onAudio })
 
   await ensureGlassesPage()
   const chunks: Uint8Array[] = []
-  let heardSpeech = false
-  let silentSince: number | null = null
-  let finished = false
-
-  const finish = async () => {
-    if (finished) return toWav(chunks)
-    finished = true
-    unsubscribe()
-    await bridge.audioControl(false)
-    return toWav(chunks)
-  }
+  let bytes = 0
+  let stopped = false
 
   const unsubscribe = bridge.onEvenHubEvent((event) => {
     const audio = event.audioEvent
-    if (!audio || finished) return
-    chunks.push(audio.audioPcm)
+    if (!audio || stopped) return
+    if (chunks.length === 0) {
+      // Silence for the time between t = 0 and the start of this first frame.
+      const gapMs = performance.now() - startedAt - audio.audioPcm.byteLength / BYTES_PER_MS
+      const padding = new Uint8Array(Math.max(0, Math.floor(gapMs * BYTES_PER_MS)) & ~1)
+      chunks.push(padding)
+      bytes += padding.byteLength
+    }
+    chunks.push(audio.audioPcm.slice())
+    bytes += audio.audioPcm.byteLength
 
     const rms = rmsOf(audio.audioPcm)
-    onLevel(Math.min(1, rms / (SILENCE_RMS_THRESHOLD * 6)))
-    const now = performance.now()
-    if (rms >= SILENCE_RMS_THRESHOLD) {
-      heardSpeech = true
-      silentSince = null
-    } else if (heardSpeech) {
-      silentSince ??= now
-      if (now - silentSince >= SILENCE_SECONDS_TO_END * 1000) finish().then(onSilenceEnd)
-    }
+    onAudio(Math.min(1, rms / (SILENCE_RMS_THRESHOLD * 6)), rms >= SILENCE_RMS_THRESHOLD)
   })
 
   await bridge.audioControl(true, AudioInputSource.Glasses)
-  return { stop: finish }
+
+  return {
+    async stop() {
+      if (!stopped) {
+        stopped = true
+        unsubscribe()
+        await bridge.audioControl(false)
+      }
+      return { wav: toWav(chunks, bytes), durationMs: bytes / BYTES_PER_MS }
+    },
+  }
 }
 
 function rmsOf(pcm: Uint8Array) {
@@ -61,8 +69,7 @@ function rmsOf(pcm: Uint8Array) {
 }
 
 // 16-bit mono PCM wrapped in a WAV header so the server can read it directly.
-function toWav(chunks: Uint8Array[]): Blob {
-  const dataLength = chunks.reduce((total, chunk) => total + chunk.byteLength, 0)
+function toWav(chunks: Uint8Array[], dataLength: number): Blob {
   const header = new DataView(new ArrayBuffer(44))
   const writeString = (offset: number, text: string) =>
     [...text].forEach((char, i) => header.setUint8(offset + i, char.charCodeAt(0)))
@@ -82,16 +89,21 @@ function toWav(chunks: Uint8Array[]): Blob {
   return new Blob([header.buffer, ...chunks.map((chunk) => chunk.slice())], { type: 'audio/wav' })
 }
 
-function simulate({ onLevel, onSilenceEnd }: Options): Recording {
-  let done = false
-  const levels = setInterval(() => onLevel(0.15 + Math.random() * 0.75), 120)
-  const end = () => {
-    done = true
-    clearInterval(levels)
-    clearTimeout(timer)
-    onLevel(0)
-    return Promise.resolve(toWav([]))
+// Browser preview: alternates ~7s of "speech" with silence so answers end on
+// their own, and produces a silent WAV as long as the session.
+function simulate({ startedAt, onAudio }: Options): SessionRecording {
+  const timer = setInterval(() => {
+    const speaking = (performance.now() - startedAt) % 15000 < 7000
+    onAudio(speaking ? 0.15 + Math.random() * 0.75 : 0.02, speaking)
+  }, 120)
+  return {
+    async stop() {
+      clearInterval(timer)
+      onAudio(0, false)
+      const durationMs = performance.now() - startedAt
+      // Keep the preview upload small: a short silent clip, real duration.
+      const bytes = Math.floor(Math.min(durationMs, 2000) * BYTES_PER_MS) & ~1
+      return { wav: toWav([new Uint8Array(bytes)], bytes), durationMs }
+    },
   }
-  const timer = setTimeout(() => !done && end().then(onSilenceEnd), 8000)
-  return { stop: end }
 }

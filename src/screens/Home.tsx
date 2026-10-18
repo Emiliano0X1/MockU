@@ -1,51 +1,70 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { Nav } from '../App'
-import { api } from '../api/client'
-import type { User } from '../api/types'
+import { api, errorMessage, getCompanies } from '../api/client'
+import type { ExperienceLevel, Profile, ResumeInfo } from '../api/types'
 import { icons, Logo, Mocky } from '../components/ui'
 import { setGlassesLabel, showOnGlasses } from '../glasses/bridge'
 import { glassesTexts, tiltLabel } from '../glasses/texts'
 import { recalibrateTilt, watchTilt } from '../glasses/tilt'
 import { useGlassesStatus } from '../glasses/useGlassesStatus'
+import { LevelPicker, levelNames } from './Setup'
 
 type Props = {
-  user: User
-  onUser: (user: User) => void
+  profile: Profile
+  resume: ResumeInfo | null
+  onProfile: (profile: Profile) => void
+  onResume: (resume: ResumeInfo | null) => void
   nav: Nav
   onSignOut: () => void
 }
 
-export function Home({ user, onUser, nav, onSignOut }: Props) {
+export function Home({ profile, resume, onProfile, onResume, nav, onSignOut }: Props) {
   const fileInput = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [sheet, setSheet] = useState<'menu' | 'profile' | 'removeResume' | null>(null)
   const glasses = useGlassesStatus()
-  const ready = user.hasResume && !uploading
-  const firstName = user.name.split(' ')[0]
+  const server = useServerStatus()
+  const ready = resume !== null && !uploading
+  const firstName = profile.full_name.split(' ')[0] ?? profile.full_name
 
   const upload = async (file: File | undefined) => {
     if (!file) return
     setUploading(true)
     setError('')
     try {
-      onUser(await api.uploadResume(file))
+      const { text_preview: _preview, ...info } = await api.uploadResume(profile.id, file)
+      onResume(info)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't read that file. Try another PDF.")
+      setError(errorMessage(err, "Couldn't read that file. Try another PDF."))
     } finally {
       setUploading(false)
       if (fileInput.current) fileInput.current.value = ''
     }
   }
 
+  const removeResume = async () => {
+    setSheet(null)
+    setError('')
+    try {
+      await api.deleteResume(profile.id)
+      onResume(null)
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't remove your resume."))
+    }
+  }
+
+  // Mocky picks a random company from the server's catalog.
   const start = async () => {
     setStarting(true)
     setError('')
     try {
-      nav({ name: 'briefing', interview: await api.createInterview() })
+      const companies = await getCompanies()
+      if (companies.length === 0) throw new Error('No companies are set up on the server yet.')
+      nav({ name: 'briefing', company: companies[Math.floor(Math.random() * companies.length)]! })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't start the interview. Try again.")
+      setError(errorMessage(err, "Couldn't start the interview. Try again."))
       setStarting(false)
     }
   }
@@ -94,9 +113,9 @@ export function Home({ user, onUser, nav, onSignOut }: Props) {
             {icons.history}
             My mocks
           </button>
-          <button className="icon-btn" onClick={() => setMenuOpen(true)} aria-label="Account" style={{ background: 'var(--ice-strong)' }}>
+          <button className="icon-btn" onClick={() => setSheet('menu')} aria-label="Account" style={{ background: 'var(--ice-strong)' }}>
             <span className="display" style={{ fontSize: 15, color: 'var(--sky)' }}>
-              {initials(user.name)}
+              {initials(profile.full_name)}
             </span>
           </button>
         </div>
@@ -120,9 +139,9 @@ export function Home({ user, onUser, nav, onSignOut }: Props) {
           <span className="upload-icon">{ready ? icons.check() : icons.upload}</span>
           <span className="stack" style={{ gap: 2, minWidth: 0 }}>
             <span className="display" style={{ fontSize: ready ? 17 : 19, color: ready ? 'var(--ink)' : 'var(--sky)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {uploading ? 'Mocky is reading…' : ready ? user.resumeFileName ?? 'Resume uploaded' : 'Upload your resume!'}
+              {uploading ? 'Mocky is reading…' : ready ? resume.original_filename : 'Upload your resume!'}
             </span>
-            <span className="small">{ready ? `Profile ready${user.resumeSummary ? ` · ${user.resumeSummary}` : ''}` : 'PDF'}</span>
+            <span className="small">{ready ? `Profile ready · ${levelNames[profile.experience_level]}` : 'PDF, up to 5 MB'}</span>
           </span>
         </button>
       </section>
@@ -132,7 +151,7 @@ export function Home({ user, onUser, nav, onSignOut }: Props) {
         <button className="start behavioral" disabled={!ready || starting} onClick={start}>
           <span className="stack" style={{ gap: 2 }}>
             <span className="title">Begin mock<br />behavioral</span>
-            <span className="sub">{ready ? (starting ? 'Finding a company…' : 'About 30 min') : 'Upload a resume to unlock'}</span>
+            <span className="sub">{ready ? (starting ? 'Finding a company…' : 'About 20 min') : 'Upload a resume to unlock'}</span>
           </span>
           {icons.bigPlay}
         </button>
@@ -166,36 +185,102 @@ export function Home({ user, onUser, nav, onSignOut }: Props) {
           </span>
         </div>
         <div className="chip">
-          <span className="dot" />
+          <span className={`dot ${server === 'ok' ? 'on' : ''}`} />
           <span className="stack">
-            <span style={{ fontWeight: 700, fontSize: 13 }}>Heart rate</span>
-            <span className="small" style={{ fontSize: 12 }}>Via Pulsoid</span>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>Server</span>
+            <span className="small" style={{ fontSize: 12 }}>
+              {server === 'checking' ? 'Checking…' : server === 'ok' ? 'Online' : server === 'degraded' ? 'Database down' : 'Offline'}
+            </span>
           </span>
         </div>
       </section>
 
-      {menuOpen && (
-        <div className="scrim" onClick={() => setMenuOpen(false)}>
+      {sheet && (
+        <div className="scrim" onClick={() => setSheet(null)}>
           <div className="sheet rise" onClick={(e) => e.stopPropagation()}>
-            <div className="stack" style={{ padding: '12px 0 8px' }}>
-              <span style={{ fontWeight: 700 }}>{user.name}</span>
-              <span className="small">{user.email}</span>
-            </div>
-            <button className="sheet-item" onClick={() => nav({ name: 'glassesTest' })}>
-              {icons.glasses()}
-              Test glasses texts
-            </button>
-            <button className="sheet-item" onClick={() => { setMenuOpen(false); fileInput.current?.click() }}>
-              Replace resume
-            </button>
-            <button className="sheet-item" onClick={onSignOut} style={{ color: 'var(--bad-ink)' }}>
-              Sign out
-            </button>
+            {sheet === 'menu' && (
+              <>
+                <div className="stack" style={{ padding: '12px 0 8px' }}>
+                  <span style={{ fontWeight: 700 }}>{profile.full_name}</span>
+                  <span className="small">{levelNames[profile.experience_level]}</span>
+                </div>
+                <button className="sheet-item" onClick={() => setSheet('profile')}>Edit profile</button>
+                <button className="sheet-item" onClick={() => { setSheet(null); fileInput.current?.click() }}>
+                  {resume ? 'Replace resume' : 'Upload resume'}
+                </button>
+                {resume && <button className="sheet-item" onClick={() => setSheet('removeResume')}>Remove resume</button>}
+                <button className="sheet-item" onClick={() => nav({ name: 'glassesTest' })}>
+                  {icons.glasses()}
+                  Test glasses texts
+                </button>
+                <button className="sheet-item" onClick={onSignOut} style={{ color: 'var(--bad-ink)' }}>
+                  Switch profile
+                </button>
+              </>
+            )}
+            {sheet === 'profile' && <EditProfile profile={profile} onSaved={(p) => { onProfile(p); setSheet(null) }} />}
+            {sheet === 'removeResume' && (
+              <div className="stack" style={{ gap: 12, paddingTop: 12 }}>
+                <h2 className="h2">Remove your resume?</h2>
+                <p className="muted">Mocky deletes the file from the server. You'll need a new one to start a mock.</p>
+                <button className="btn" style={{ background: 'var(--bad)' }} onClick={removeResume}>Remove resume</button>
+                <button className="btn ghost" onClick={() => setSheet(null)}>Keep it</button>
+              </div>
+            )}
           </div>
         </div>
       )}
     </main>
   )
+}
+
+function EditProfile({ profile, onSaved }: { profile: Profile; onSaved: (profile: Profile) => void }) {
+  const [name, setName] = useState(profile.full_name)
+  const [level, setLevel] = useState<ExperienceLevel>(profile.experience_level)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      onSaved(await api.updateProfile(profile.id, { full_name: name.trim(), experience_level: level }))
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't save your profile."))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="stack" style={{ gap: 12, paddingTop: 12 }} onSubmit={save}>
+      <h2 className="h2">Your profile</h2>
+      <div className="field">
+        <label htmlFor="edit-name">Your name</label>
+        <input id="edit-name" required value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <LevelPicker value={level} onChange={setLevel} />
+      {error && <p className="error" role="alert">{error}</p>}
+      <button className="btn" type="submit" disabled={busy || !name.trim()}>{busy ? 'Saving…' : 'Save'}</button>
+    </form>
+  )
+}
+
+type ServerStatus = 'checking' | 'ok' | 'degraded' | 'offline'
+
+function useServerStatus(): ServerStatus {
+  const [status, setStatus] = useState<ServerStatus>('checking')
+  useEffect(() => {
+    let cancelled = false
+    api
+      .health()
+      .then((health) => !cancelled && setStatus(health.database === 'ok' ? 'ok' : 'degraded'))
+      .catch((err) => !cancelled && setStatus((err as { status?: number }).status === 503 ? 'degraded' : 'offline'))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return status
 }
 
 function initials(name: string) {

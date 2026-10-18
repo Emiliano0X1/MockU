@@ -694,3 +694,55 @@ input {
   filter: grayscale(1) invert(1) brightness(0.9) sepia(1) hue-rotate(70deg) saturate(4);
   flex-shrink: 0;
 }
+
+/* ---------- backend integration ---------- */
+
+.tag.good {
+  color: #1d6b42;
+  background: #e3f5ea;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  background: var(--white);
+  border: 3px solid var(--frost);
+  border-radius: 18px;
+  padding: 4px;
+}
+
+.segmented button {
+  flex: 1;
+  border-radius: 13px;
+  padding: 10px 8px;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ink-2);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.segmented button.on {
+  background: var(--sky);
+  color: var(--white);
+}
+
+.subscore {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.subscore-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.subscore-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--sky);
+}

@@ -1,105 +1,168 @@
-// Shapes exchanged with the Python server. The server owns Supabase and Gemini;
-// this app only ever talks to the server.
+// Shapes exchanged with the Python server (Backend/, see Backend/README.md).
+// Field names match the server's JSON exactly. All *_ms values are elapsed
+// milliseconds since the session's started_at.
 
-export type User = {
+export type ExperienceLevel = 'intern' | 'new_grad'
+
+export type Profile = {
   id: string
-  name: string
-  email: string
-  hasResume: boolean
-  resumeFileName?: string
-  resumeSummary?: string // e.g. "4 projects · 2 internships"
+  full_name: string
+  experience_level: ExperienceLevel
+  created_at: string
+  updated_at?: string | null
 }
 
-export type Session = {
-  token: string
-  user: User
+// GET /profiles/{id}/resume
+export type ResumeInfo = {
+  id: string
+  original_filename: string
+  char_count: number
+  created_at: string
+  updated_at?: string | null
 }
+
+// POST /resumes
+export type ResumeUpload = ResumeInfo & { text_preview: string }
 
 export type Company = {
+  id: string
   name: string
-  tagline: string // "Logistics software · Series C · 420 people"
-  about: string
-  values: string[]
-  projects: { name: string; description: string }[]
-  tip?: string // Mocky's tip linking the resume to the company
+  industry?: string | null
+  culture_summary?: string | null
+  values: { name: string; description: string }[]
+  website_url?: string | null
 }
 
-export type Interview = {
-  id: string
-  company: Company
-  briefingSeconds: number
-  timeLimitSeconds: number
-}
+export type SessionStatus = 'recording' | 'processing' | 'done' | 'failed'
 
-export type QuestionKind = 'general' | 'followup' | 'final'
-
-export type Question = {
-  id: string
-  kind: QuestionKind
+export type SessionQuestion = {
+  position: number
+  question_id: string
   text: string
+  category: string
+  asked_at_ms: number | null
 }
 
-// Events the server pushes over the live WebSocket.
-export type LiveEvent =
-  | { type: 'question'; question: Question }
-  | { type: 'heart_rate'; bpm: number }
-  | { type: 'final_round' }
-  | { type: 'analyzing' }
-  | { type: 'completed'; resultId: string }
-  | { type: 'error'; message: string }
-
-// Messages the app sends over the live WebSocket.
-export type LiveCommand =
-  | { type: 'ready' }
-  | { type: 'answer_uploaded'; questionId: string; elapsedSeconds: number }
-  | { type: 'finish'; reason: 'time_limit' | 'user' }
-
-export type SignalKey = 'pauses' | 'fillers' | 'restarts' | 'voice' | 'pace' | 'off_topic'
-
-export type Signal = {
-  key: SignalKey
-  label: string
-  detail: string
-  severity: 0 | 1 | 2 | 3 | 4
-  clipIds: string[]
+// POST /sessions
+export type SessionCreated = {
+  id: string
+  status: 'recording'
+  started_at: string
+  company_id: string
+  resume_id: string
+  role_title: string
+  questions: SessionQuestion[]
 }
 
-export type TranscriptPart = {
+// GET /sessions/{id}
+export type SessionDetail = {
+  id: string
+  status: SessionStatus
+  company_id: string
+  resume_id: string
+  role_title: string
+  started_at: string
+  ended_at?: string | null
+  has_audio: boolean
+  report_ready: boolean
+  questions: SessionQuestion[]
+}
+
+// POST /sessions/{id}/end
+export type SessionEnded = {
+  id: string
+  status: string
+  ended_at: string
+  duration_ms: number
+}
+
+// GET /sessions?profile_id=
+export type SessionListItem = {
+  id: string
+  company: { id: string; name: string }
+  role_title?: string | null
+  status: SessionStatus
+  started_at: string
+  ended_at?: string | null
+  duration_ms?: number | null
+  overall_score?: number | null
+}
+
+export type Severity = 'low' | 'medium' | 'high'
+
+export type Finding = {
+  id: string
+  category: string // e.g. 'technical', 'biometric'
+  start_ms: number
+  end_ms: number
+  severity: Severity
+  title: string
+  details: { note?: string; [key: string]: unknown }
+}
+
+// The server stores summary as free-form JSON; these are the keys the pipeline writes.
+export type ReportSummary = {
+  overview?: string
+  communication_score?: number
+  technical_depth_score?: number
+  composure_score?: number
+  key_strengths?: string[]
+  areas_for_growth?: string[]
+  [key: string]: unknown
+}
+
+// GET /sessions/{id}/report. report is null until status is 'done'.
+export type Report = {
+  session_id: string
+  status: SessionStatus
+  report: {
+    overall_score: number | null
+    schema_version: string
+    summary: ReportSummary
+    findings: Finding[]
+  } | null
+}
+
+export type TranscriptSegment = { start_ms: number; end_ms: number; text: string }
+
+export type Transcript = {
+  session_id: string
+  status: SessionStatus
+  segments: TranscriptSegment[]
+}
+
+export type BiometricSeries = {
+  session_id: string
+  stats: {
+    count: number
+    min_bpm: number | null
+    max_bpm: number | null
+    avg_bpm: number | null
+    baseline_bpm: number | null
+  }
+  points: { t_ms: number; bpm_avg: number; bpm_max: number }[]
+}
+
+// Tips the server pushed to the glasses during the interview.
+export type Suggestion = {
+  id: string
+  t_ms: number
   text: string
-  tag?: 'filler' | 'pause' | 'drift' | 'restart' | 'voice' | 'pace'
+  severity: Severity
+  trigger_reason: string
+  bpm_at_trigger?: number | null
+  baseline_bpm?: number | null
+  delivered_at?: string | null
 }
 
-export type Clip = {
-  id: string
-  signal: SignalKey
-  questionText: string
-  audioUrl: string
-  durationSeconds: number
-  // Highlighted ranges inside the clip, in seconds.
-  marks: { start: number; end: number; signal: SignalKey; label: string }[]
-  transcript: TranscriptPart[]
-  suggestion: string
-}
+// Messages on WS /ws/sessions/{id}/glasses, server to app.
+export type GlassesMessage =
+  | { type: 'suggestion'; id: string; t_ms: number; text: string; severity: Severity; ttl_ms: number }
+  | { type: 'sensor_status'; state: 'online' | 'offline'; last_bpm: number | null }
+  | { type: 'session_ended' }
+  | { type: 'ping' }
 
-export type Result = {
-  id: string
-  interviewId: string
-  companyName: string
-  createdAt: string
-  durationSeconds: number
-  score: number
-  scoreDelta?: number
-  headline: string
-  signals: Signal[]
-  strengths: string
-  weaknesses: string
-  clips: Clip[]
-}
+// App to server.
+export type GlassesReply = { type: 'ack'; suggestion_id: string } | { type: 'pong' }
 
-export type HistoryItem = {
-  resultId: string
-  companyName: string
-  createdAt: string
-  score: number
-  topSignal: string
-}
+export type Health = { status: 'ok' | 'degraded'; database: 'ok' | 'unreachable'; time: string }

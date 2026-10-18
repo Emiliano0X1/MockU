@@ -22,13 +22,14 @@ export const glassesTexts = {
   }),
   starting: (): GlassesView => ({ mocky: false, label: '', text: 'Get comfortable. The first question is coming.' }),
   question: (text: string): GlassesView => ({ mocky: true, label: 'Mocky asks', text }),
-  followUp: (text: string): GlassesView => ({ mocky: true, label: 'Follow-up', text }),
-  finalRound: (): GlassesView => ({ mocky: true, label: 'Final round', text: "Mocky stays with you until the end." }),
-  finalQuestion: (text: string): GlassesView => ({ mocky: true, label: 'Final round', text }),
   answerReceived: (): GlassesView => ({ mocky: false, label: '', text: 'Got it. Take a breath.' }),
-  finalAnswerReceived: (): GlassesView => ({ mocky: true, label: 'Final round', text: 'Got it.' }),
   analyzing: (): GlassesView => ({ mocky: true, label: "That's the interview", text: 'Mocky is reviewing your answers.' }),
   done: (): GlassesView => ({ mocky: false, label: 'Done', text: 'Your results are on your phone.' }),
+}
+
+// Label line while the server's heart-rate tip is showing, e.g. "<3 Take a slow breath".
+export function tipLabel(text: string) {
+  return `<3 ${text}`
 }
 
 // Sample content for the glasses test screen.
@@ -43,11 +44,8 @@ export const glassesTestCases: { name: string; view: GlassesView }[] = [
   { name: 'Question', view: glassesTexts.question('Tell me about a time you disagreed with a teammate.') },
   { name: 'Countdown', view: { ...glassesTexts.question('Tell me about a time you disagreed with a teammate.'), label: countdownLabel(3) } },
   { name: 'Countdown GO', view: { ...glassesTexts.question('Tell me about a time you disagreed with a teammate.'), label: countdownLabel(0) } },
-  { name: 'Follow-up', view: glassesTexts.followUp('What did you decide yourself in that situation?') },
+  { name: 'Heart-rate tip', view: { ...glassesTexts.question('Tell me about a time you disagreed with a teammate.'), label: tipLabel('Take a slow breath') } },
   { name: 'Answer received', view: glassesTexts.answerReceived() },
-  { name: 'Final round starts', view: glassesTexts.finalRound() },
-  { name: 'Final round question', view: glassesTexts.finalQuestion('What is your biggest professional failure?') },
-  { name: 'Final answer received', view: glassesTexts.finalAnswerReceived() },
   { name: 'Reviewing', view: glassesTexts.analyzing() },
   { name: 'Done', view: glassesTexts.done() },
 ]

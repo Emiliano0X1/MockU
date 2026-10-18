@@ -1,191 +1,311 @@
 // In-browser stand-in for the Python server, used when VITE_API_URL is not set.
-// Mirrors the real contract so screens can be built and demoed without a backend.
-import type { LiveCommand, LiveEvent, Question, Result, User, HistoryItem, Interview } from './types'
+// Mirrors the real contract (Backend/README.md) so screens can be built and
+// demoed without a backend. State lives in memory and resets on reload.
+import type {
+  BiometricSeries,
+  Company,
+  ExperienceLevel,
+  Finding,
+  GlassesMessage,
+  Health,
+  Profile,
+  Report,
+  ResumeInfo,
+  ResumeUpload,
+  SessionCreated,
+  SessionDetail,
+  SessionEnded,
+  SessionListItem,
+  SessionQuestion,
+  Suggestion,
+  Transcript,
+} from './types'
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const now = () => new Date().toISOString()
+const uuid = () => crypto.randomUUID()
 
-let user: User = {
-  id: 'mock-user',
-  name: 'Alex Rivera',
-  email: 'alex.rivera@gmail.com',
-  hasResume: false,
-}
+let profile: Profile | null = null
+let resume: ResumeInfo | null = null
 
-const interview: Interview = {
-  id: 'mock-interview',
-  briefingSeconds: 5 * 60,
-  timeLimitSeconds: 30 * 60,
-  company: {
-    name: 'Tidewater',
-    tagline: 'Logistics software · Series C · 420 people',
-    about:
-      'Tidewater builds routing software that helps 3,000+ regional carriers move freight with fewer empty miles. Engineering is split into small teams that each own one product.',
-    values: ['Own the outcome', 'Say it plainly', 'Ship, then sharpen', 'Drivers first'],
-    projects: [
-      { name: 'Live ETA engine', description: 'Rebuilding arrival predictions on streaming GPS data.' },
-      { name: 'Driver mobile app v3', description: 'Offline-first redesign for rural routes.' },
-      { name: 'Carbon reporting', description: 'Emissions dashboards for enterprise shippers.' },
+const companies: Company[] = [
+  {
+    id: 'c-stripe',
+    name: 'Stripe',
+    industry: 'Fintech',
+    culture_summary: 'High ownership, written communication, and rigorous technical execution.',
+    values: [
+      { name: 'Users first', description: 'Start from the problem the user actually has.' },
+      { name: 'Move with urgency', description: 'Iterate quickly and learn from feedback.' },
+      { name: 'Write it down', description: 'Clear written thinking over meetings.' },
     ],
-    tip: "Your resume's offline-sync project maps well to Driver app v3. Have that story ready.",
+    website_url: 'https://stripe.com',
   },
-}
-
-const script: (Question | 'final_round')[] = [
-  { id: 'q1', kind: 'general', text: 'Walk me through your resume and what brought you to Tidewater.' },
-  { id: 'q2', kind: 'general', text: 'Tell me about a time you disagreed with a teammate.' },
-  { id: 'q3', kind: 'followup', text: 'What did you decide yourself in that situation?' },
-  { id: 'q4', kind: 'general', text: 'Describe a project where you had to ship with incomplete information.' },
-  'final_round',
-  { id: 'q5', kind: 'final', text: 'What is your biggest professional failure?' },
-  { id: 'q6', kind: 'final', text: 'Why should we pick you for the Driver app team?' },
+  {
+    id: 'c-tidewater',
+    name: 'Tidewater',
+    industry: 'Logistics software',
+    culture_summary: 'Small teams that each own one product end to end, with drivers at the center of every decision.',
+    values: [
+      { name: 'Own the outcome', description: 'You ship it, you watch it in production.' },
+      { name: 'Say it plainly', description: 'Direct feedback, kindly delivered.' },
+      { name: 'Drivers first', description: 'Every feature is judged by the people on the road.' },
+    ],
+    website_url: null,
+  },
 ]
 
-const result: Result = {
-  id: 'mock-result',
-  interviewId: interview.id,
-  companyName: 'Tidewater',
-  createdAt: new Date().toISOString(),
-  durationSeconds: 24 * 60,
-  score: 72,
-  scoreDelta: 9,
-  headline: 'Your stories land. You hesitate on the easy questions.',
-  signals: [
-    { key: 'pauses', label: 'Long pauses', detail: '6 over 3s, 4 of them on easy questions', severity: 4, clipIds: ['c1'] },
-    { key: 'fillers', label: 'Filler words', detail: '"um" ×14 · "like" ×9 · "so…" ×7', severity: 3, clipIds: ['c2'] },
-    { key: 'restarts', label: 'Restarts & repeats', detail: '8 restarted sentences, 2 changed stories', severity: 2, clipIds: ['c2'] },
-    { key: 'voice', label: 'Shaky or high voice', detail: 'Pitch rose on two answers, pulse peaked at 112', severity: 2, clipIds: ['c3'] },
-    { key: 'pace', label: 'Unusual pace', detail: 'Rushed one answer at 182 wpm', severity: 1, clipIds: ['c3'] },
-    { key: 'off_topic', label: 'Off-topic, no point', detail: 'Drifted for 48s before the result', severity: 3, clipIds: ['c2'] },
-  ],
-  strengths:
-    'Your offline-sync story was clear and had numbers: "cut sync failures 40%". It matched Tidewater\'s "Drivers first" value.',
-  weaknesses:
-    'On conflict questions you set up context for too long and said "we" instead of what you did. Open with the decision, then the why.',
-  clips: [
-    {
-      id: 'c2',
-      signal: 'off_topic',
-      questionText: 'Tell me about a time you disagreed with a teammate.',
-      audioUrl: '',
-      durationSeconds: 78,
-      marks: [
-        { start: 10, end: 14, signal: 'pauses', label: '4.1s pause' },
-        { start: 28, end: 76, signal: 'off_topic', label: 'Drift' },
-      ],
-      transcript: [
-        { text: 'So' },
-        { text: 'um…', tag: 'filler' },
-        { text: '4.1s', tag: 'pause' },
-        { text: 'at my internship we' },
-        { text: 'we, like,', tag: 'filler' },
-        { text: 'had this sprint, and' },
-        { text: 'the team also used Jira, and our standups were at 9…', tag: 'drift' },
-      ],
-      suggestion: '"I pushed back on a launch date because the offline mode wasn\'t safe for drivers."',
-    },
-    {
-      id: 'c1',
-      signal: 'pauses',
-      questionText: 'Walk me through your resume.',
-      audioUrl: '',
-      durationSeconds: 14,
-      marks: [{ start: 2, end: 7, signal: 'pauses', label: '5.0s pause' }],
-      transcript: [{ text: 'Sure, so' }, { text: '5.0s', tag: 'pause' }, { text: 'I study computer science…' }],
-      suggestion: 'Have a 20-second opener ready: school, one project, why this company.',
-    },
-    {
-      id: 'c3',
-      signal: 'voice',
-      questionText: 'What is your biggest professional failure?',
-      audioUrl: '',
-      durationSeconds: 31,
-      marks: [{ start: 4, end: 19, signal: 'voice', label: 'Pitch up' }],
-      transcript: [{ text: 'I think my biggest failure was' }, { text: 'when I, when I', tag: 'restart' }, { text: 'missed a deadline…' }],
-      suggestion: 'Slow down on the first sentence; your pace settles once you start the story.',
-    },
-  ],
+const questionBank = [
+  'Walk me through your resume and what brought you here.',
+  'Tell me about a time you disagreed with a teammate.',
+  'Describe a project where you had to ship with incomplete information.',
+  'Tell me about a challenging bug and how you tracked it down.',
+  'What is your biggest professional failure?',
+  'Why do you want to work on this team?',
+  'Tell me about a time you had to learn something fast.',
+]
+
+type MockSession = SessionDetail & { profile_id: string; durationMs: number | null; suggestions: Suggestion[] }
+const sessions = new Map<string, MockSession>()
+let liveSessionId: string | null = null
+
+function notFound(what: string): never {
+  throw Object.assign(new Error(`${what} not found.`), { code: 'NOT_FOUND', status: 404 })
 }
 
-const history: HistoryItem[] = [
-  { resultId: 'mock-result', companyName: 'Tidewater', createdAt: new Date().toISOString(), score: 72, topSignal: 'Long pauses' },
-  { resultId: 'mock-result', companyName: 'Lumen Bank', createdAt: '2026-10-12T15:00:00Z', score: 63, topSignal: 'Filler words' },
-  { resultId: 'mock-result', companyName: 'Orbit Health', createdAt: '2026-10-08T15:00:00Z', score: 66, topSignal: 'Off-topic answers' },
-  { resultId: 'mock-result', companyName: 'Fernway', createdAt: '2026-10-03T15:00:00Z', score: 58, topSignal: 'Shaky voice' },
-  { resultId: 'mock-result', companyName: 'Pebble Games', createdAt: '2026-09-27T15:00:00Z', score: 51, topSignal: 'Filler words' },
-]
+function getMockSession(id: string) {
+  return sessions.get(id) ?? notFound('Session')
+}
 
 export const mockApi = {
-  async signUp(name: string, email: string, _password: string) {
-    await wait(400)
-    user = { ...user, name, email, hasResume: false }
-    return { token: 'mock-token', user }
+  async health(): Promise<Health> {
+    return { status: 'ok', database: 'ok', time: now() }
   },
-  async signIn(email: string, _password: string) {
-    await wait(400)
-    user = { ...user, email }
-    return { token: 'mock-token', user }
+
+  async createProfile(fullName: string, level: ExperienceLevel): Promise<Profile> {
+    await wait(300)
+    profile = { id: uuid(), full_name: fullName, experience_level: level, created_at: now(), updated_at: now() }
+    resume = null
+    return profile
   },
-  async me() {
-    return user
+  async getProfile(id: string): Promise<Profile> {
+    if (!profile || profile.id !== id) notFound('Profile')
+    return profile
   },
-  async uploadResume(file: File) {
+  async updateProfile(id: string, changes: { full_name?: string; experience_level?: ExperienceLevel }): Promise<Profile> {
+    await wait(300)
+    if (!profile || profile.id !== id) notFound('Profile')
+    profile = { ...profile, ...changes, updated_at: now() }
+    return profile
+  },
+
+  async getResume(_profileId: string): Promise<ResumeInfo | null> {
+    return resume
+  },
+  async uploadResume(_profileId: string, file: File): Promise<ResumeUpload> {
     await wait(1200)
-    user = { ...user, hasResume: true, resumeFileName: file.name, resumeSummary: '4 projects · 2 internships' }
-    return user
+    resume = { id: uuid(), original_filename: file.name, char_count: 2840, created_at: now(), updated_at: now() }
+    return { ...resume, text_preview: 'Software engineering student with internship experience…' }
   },
-  async createInterview() {
-    await wait(500)
-    return interview
-  },
-  async uploadAnswer(_interviewId: string, _questionId: string, _wav: Blob) {
+  async deleteResume(_profileId: string): Promise<void> {
     await wait(300)
+    resume = null
   },
-  async result(_resultId: string) {
+
+  async listCompanies(): Promise<Company[]> {
     await wait(300)
-    return result
+    return companies
   },
-  async history() {
+
+  async createSession(profileId: string, companyId: string, resumeId: string): Promise<SessionCreated> {
+    await wait(400)
+    const picked = [...questionBank].sort(() => Math.random() - 0.5).slice(0, 4)
+    const questions: SessionQuestion[] = picked.map((text, i) => ({
+      position: i + 1,
+      question_id: uuid(),
+      text,
+      category: 'Behavioral',
+      asked_at_ms: null,
+    }))
+    const session: MockSession = {
+      id: uuid(),
+      status: 'recording',
+      company_id: companyId,
+      resume_id: resumeId,
+      role_title: 'SWE Intern',
+      started_at: now(),
+      ended_at: null,
+      has_audio: false,
+      report_ready: false,
+      questions,
+      profile_id: profileId,
+      durationMs: null,
+      suggestions: [],
+    }
+    sessions.set(session.id, session)
+    liveSessionId = session.id
+    return { ...session, status: 'recording', questions: questions.map((q) => ({ ...q })) }
+  },
+  async getSession(id: string): Promise<SessionDetail> {
+    const { profile_id: _p, durationMs: _d, suggestions: _s, ...detail } = getMockSession(id)
+    return { ...detail, questions: detail.questions.map((q) => ({ ...q })) }
+  },
+  async listSessions(profileId: string): Promise<{ items: SessionListItem[]; total: number }> {
     await wait(300)
-    return history
+    const items = [...sessions.values()]
+      .filter((s) => s.profile_id === profileId)
+      .reverse()
+      .map((s) => ({
+        id: s.id,
+        company: { id: s.company_id, name: companies.find((c) => c.id === s.company_id)?.name ?? 'Mock Company' },
+        role_title: s.role_title,
+        status: s.status,
+        started_at: s.started_at,
+        ended_at: s.ended_at,
+        duration_ms: s.durationMs,
+        overall_score: s.status === 'done' ? scoreFor(s) : null,
+      }))
+    return { items, total: items.length }
+  },
+  async markQuestionShown(id: string, position: number, askedAtMs: number) {
+    const question = getMockSession(id).questions.find((q) => q.position === position) ?? notFound('Question')
+    question.asked_at_ms = askedAtMs
+    return { position, asked_at_ms: askedAtMs }
+  },
+  async endSession(id: string): Promise<SessionEnded> {
+    await wait(300)
+    const session = getMockSession(id)
+    session.ended_at ??= now()
+    session.durationMs = Date.parse(session.ended_at) - Date.parse(session.started_at)
+    if (liveSessionId === id) liveSessionId = null
+    return { id, status: session.status, ended_at: session.ended_at, duration_ms: session.durationMs }
+  },
+  async uploadAudio(id: string, _wav: Blob, _durationMs: number) {
+    await wait(800)
+    const session = getMockSession(id)
+    session.has_audio = true
+    session.status = 'processing'
+    setTimeout(() => {
+      session.status = 'done'
+      session.report_ready = true
+    }, 3000)
+    return { session_id: id, status: 'processing' as const }
+  },
+  async reprocess(id: string) {
+    const session = getMockSession(id)
+    session.status = 'processing'
+    setTimeout(() => (session.status = 'done'), 3000)
+    return { session_id: id, status: 'processing' as const }
+  },
+  async deleteSession(id: string): Promise<void> {
+    await wait(300)
+    sessions.delete(id)
+  },
+
+  async getReport(id: string): Promise<Report> {
+    await wait(300)
+    const session = getMockSession(id)
+    if (session.status !== 'done') return { session_id: id, status: session.status, report: null }
+    const asked = session.questions.filter((q) => q.asked_at_ms != null)
+    const findings: Finding[] = asked.slice(0, 3).map((q, i) => ({
+      id: `f-${q.position}`,
+      category: i === 1 ? 'biometric' : 'communication',
+      start_ms: q.asked_at_ms! + 6000,
+      end_ms: q.asked_at_ms! + 14000,
+      severity: (['medium', 'high', 'low'] as const)[i]!,
+      title: ['Long pause before answering', 'Heart rate spiked', 'Clear, structured story'][i]!,
+      details: {
+        note: [
+          'You paused for about 5 seconds before starting. Have a one-line opener ready.',
+          'Your pulse rose to 112 BPM while describing the conflict, then settled.',
+          'You opened with the decision, then the why. Keep doing this.',
+        ][i],
+      },
+    }))
+    return {
+      session_id: id,
+      status: 'done',
+      report: {
+        overall_score: scoreFor(session),
+        schema_version: '1.0.0',
+        summary: {
+          overview: 'Your stories land. You hesitate before the easy questions.',
+          communication_score: 74,
+          technical_depth_score: 68,
+          composure_score: 81,
+          key_strengths: ['Specific numbers in your project stories', 'Stayed calm on the failure question'],
+          areas_for_growth: ['Open with the decision, then the context', 'Say "I" instead of "we" for your own work'],
+        },
+        findings,
+      },
+    }
+  },
+  async getTranscript(id: string): Promise<Transcript> {
+    const session = getMockSession(id)
+    const segments = session.questions
+      .filter((q) => q.asked_at_ms != null)
+      .flatMap((q) => [
+        { start_ms: q.asked_at_ms! + 6000, end_ms: q.asked_at_ms! + 10000, text: 'So, um… at my internship we had a sprint where' },
+        { start_ms: q.asked_at_ms! + 10000, end_ms: q.asked_at_ms! + 16000, text: 'I pushed back on the launch date because offline mode was not safe yet.' },
+      ])
+    return { session_id: id, status: session.status, segments }
+  },
+  async getBiometrics(id: string): Promise<BiometricSeries> {
+    const session = getMockSession(id)
+    const duration = session.durationMs ?? 60000
+    let bpm = 74
+    const points = Array.from({ length: Math.max(2, Math.floor(duration / 5000)) }, (_, i) => {
+      bpm = Math.max(64, Math.min(118, bpm + Math.round((Math.random() - 0.45) * 6)))
+      return { t_ms: i * 5000, bpm_avg: bpm, bpm_max: bpm + 2 }
+    })
+    const values = points.map((p) => p.bpm_avg)
+    return {
+      session_id: id,
+      stats: {
+        count: points.length,
+        min_bpm: Math.min(...values),
+        max_bpm: Math.max(...values),
+        avg_bpm: Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10,
+        baseline_bpm: 74,
+      },
+      points,
+    }
+  },
+  async getSuggestions(id: string) {
+    return { session_id: id, items: getMockSession(id).suggestions }
   },
 }
 
-export function mockLive(onEvent: (event: LiveEvent) => void) {
-  let step = 0
+function scoreFor(session: MockSession) {
+  return 60 + (session.id.charCodeAt(0) % 30)
+}
+
+// Fake live channel: reports the watch online and sends one breathing tip.
+export function mockGlassesSocket(onMessage: (message: GlassesMessage) => void) {
   let closed = false
-  let bpm = 74
-  const emit = (event: LiveEvent) => !closed && onEvent(event)
-
-  const pulse = setInterval(() => {
-    bpm = Math.max(64, Math.min(118, bpm + Math.round((Math.random() - 0.4) * 4)))
-    emit({ type: 'heart_rate', bpm })
-  }, 2000)
-
-  const next = (delay: number) =>
+  const emit = (message: GlassesMessage) => !closed && onMessage(message)
+  const sessionId = liveSessionId
+  const timers = [
+    setTimeout(() => emit({ type: 'sensor_status', state: 'online', last_bpm: 76 }), 800),
     setTimeout(() => {
-      const item = script[step++]
-      if (!item) return finish()
-      if (item === 'final_round') {
-        emit({ type: 'final_round' })
-        return next(2500)
+      const startedAt = sessionId ? Date.parse(getMockSession(sessionId).started_at) : Date.now()
+      const tip: Suggestion = {
+        id: uuid(),
+        t_ms: Date.now() - startedAt,
+        text: 'Take a slow breath',
+        severity: 'medium',
+        trigger_reason: 'bpm_spike',
+        bpm_at_trigger: 104,
+        baseline_bpm: 76,
       }
-      emit({ type: 'question', question: item })
-    }, delay)
-
-  const finish = () => {
-    emit({ type: 'analyzing' })
-    setTimeout(() => emit({ type: 'completed', resultId: result.id }), 2500)
-  }
-
+      if (sessionId) sessions.get(sessionId)?.suggestions.push(tip)
+      emit({ type: 'suggestion', id: tip.id, t_ms: tip.t_ms, text: tip.text, severity: tip.severity, ttl_ms: 6000 })
+    }, 25000),
+  ]
   return {
-    send(command: LiveCommand) {
-      if (command.type === 'ready') next(2500)
-      if (command.type === 'answer_uploaded') next(3000)
-      if (command.type === 'finish') finish()
-    },
     close() {
       closed = true
-      clearInterval(pulse)
+      timers.forEach(clearTimeout)
     },
   }
 }

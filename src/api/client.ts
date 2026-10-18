@@ -1,68 +1,148 @@
-import { API_URL, USE_MOCK, endpoints } from './config'
+import { API_URL, QUESTION_COUNT, ROLE_TITLE, USE_MOCK, endpoints } from './config'
 import { mockApi } from './mock'
-import type { HistoryItem, Interview, Result, Session, User } from './types'
+import type {
+  BiometricSeries,
+  Company,
+  ExperienceLevel,
+  Health,
+  Profile,
+  Report,
+  ResumeInfo,
+  ResumeUpload,
+  SessionCreated,
+  SessionDetail,
+  SessionEnded,
+  SessionListItem,
+  Suggestion,
+  Transcript,
+} from './types'
 
-const TOKEN_KEY = 'mocku.token'
+// The server has no login; the candidate is identified by a profile id kept on the phone.
+const PROFILE_KEY = 'mocku.profileId'
 
-let token: string | null = readToken()
-
-function readToken() {
+export function getProfileId() {
   try {
-    return localStorage.getItem(TOKEN_KEY)
+    return localStorage.getItem(PROFILE_KEY)
   } catch {
     return null
   }
 }
 
-export function setToken(value: string | null) {
-  token = value
+export function setProfileId(value: string | null) {
   try {
-    if (value) localStorage.setItem(TOKEN_KEY, value)
-    else localStorage.removeItem(TOKEN_KEY)
+    if (value) localStorage.setItem(PROFILE_KEY, value)
+    else localStorage.removeItem(PROFILE_KEY)
   } catch {
-    // storage unavailable; keep the token in memory only
+    // storage unavailable; the profile is forgotten on reload
   }
 }
 
-export function getToken() {
-  return token
+// Errors from the server arrive as { "error": { "code", "message" } }.
+export class ApiError extends Error {
+  readonly code: string
+  readonly status: number
+
+  constructor(message: string, code: string, status: number) {
+    super(message)
+    this.code = code
+    this.status = status
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  if (token) headers.set('Authorization', `Bearer ${token}`)
-  if (init.body && typeof init.body === 'string') headers.set('Content-Type', 'application/json')
-  const res = await fetch(API_URL + path, { ...init, headers })
+  if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')
+  let res: Response
+  try {
+    res = await fetch(API_URL + path, { ...init, headers })
+  } catch {
+    throw new ApiError("Can't reach the MockU server. Check your connection.", 'NETWORK_ERROR', 0)
+  }
   if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(text || `Request failed (${res.status})`)
+    const body = await res.json().catch(() => null)
+    const error = body?.error
+    throw new ApiError(error?.message ?? `Request failed (${res.status})`, error?.code ?? 'HTTP_ERROR', res.status)
   }
   return res.status === 204 ? (undefined as T) : res.json()
 }
 
+const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) })
+
 const realApi = {
-  signUp: (name: string, email: string, password: string) =>
-    request<Session>(endpoints.signUp, { method: 'POST', body: JSON.stringify({ name, email, password }) }),
-  signIn: (email: string, password: string) =>
-    request<Session>(endpoints.signIn, { method: 'POST', body: JSON.stringify({ email, password }) }),
-  me: () => request<User>(endpoints.me),
-  uploadResume: (file: File) => {
+  health: () => request<Health>(endpoints.health),
+
+  createProfile: (fullName: string, level: ExperienceLevel) =>
+    request<Profile>(endpoints.profiles, json('POST', { full_name: fullName, experience_level: level })),
+  getProfile: (id: string) => request<Profile>(endpoints.profile(id)),
+  updateProfile: (id: string, changes: { full_name?: string; experience_level?: ExperienceLevel }) =>
+    request<Profile>(endpoints.profile(id), json('PATCH', changes)),
+
+  // null when the candidate hasn't uploaded one yet.
+  getResume: async (profileId: string) => {
+    try {
+      return await request<ResumeInfo>(endpoints.profileResume(profileId))
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'resume_not_found') return null
+      throw err
+    }
+  },
+  uploadResume: (profileId: string, file: File) => {
     const body = new FormData()
     body.append('file', file)
-    return request<User>(endpoints.resume, { method: 'POST', body })
+    body.append('profile_id', profileId)
+    return request<ResumeUpload>(endpoints.resumes, { method: 'POST', body })
   },
-  createInterview: () =>
-    request<Interview>(endpoints.createInterview, { method: 'POST', body: JSON.stringify({ type: 'behavioral' }) }),
-  uploadAnswer: (interviewId: string, questionId: string, wav: Blob) =>
-    request<void>(endpoints.answer(interviewId, questionId), {
-      method: 'POST',
-      body: wav,
-      headers: { 'Content-Type': 'audio/wav' },
-    }),
-  result: (resultId: string) => request<Result>(endpoints.result(resultId)),
-  history: () => request<HistoryItem[]>(endpoints.history),
+  deleteResume: (profileId: string) => request<void>(endpoints.profileResume(profileId), { method: 'DELETE' }),
+
+  listCompanies: () => request<Company[]>(endpoints.companies),
+
+  // Starts the interview clock (t = 0) on the server.
+  createSession: (profileId: string, companyId: string, resumeId: string) =>
+    request<SessionCreated>(
+      endpoints.sessions,
+      json('POST', {
+        profile_id: profileId,
+        company_id: companyId,
+        resume_id: resumeId,
+        role_title: ROLE_TITLE,
+        question_count: QUESTION_COUNT,
+      }),
+    ),
+  getSession: (id: string) => request<SessionDetail>(endpoints.session(id)),
+  listSessions: (profileId: string) =>
+    request<{ items: SessionListItem[]; total: number }>(`${endpoints.sessions}?profile_id=${encodeURIComponent(profileId)}&limit=50`),
+  markQuestionShown: (id: string, position: number, askedAtMs: number) =>
+    request<{ position: number; asked_at_ms: number }>(endpoints.questionShown(id, position), json('PATCH', { asked_at_ms: askedAtMs })),
+  endSession: (id: string) => request<SessionEnded>(endpoints.endSession(id), { method: 'POST' }),
+  uploadAudio: (id: string, wav: Blob, durationMs: number) => {
+    const body = new FormData()
+    body.append('file', wav, 'interview.wav')
+    body.append('duration_ms', String(Math.round(durationMs)))
+    return request<{ session_id: string; status: 'processing' }>(endpoints.audio(id), { method: 'POST', body })
+  },
+  reprocess: (id: string) => request<{ session_id: string; status: 'processing' }>(endpoints.reprocess(id), { method: 'POST' }),
+  deleteSession: (id: string) => request<void>(endpoints.session(id), { method: 'DELETE' }),
+
+  getReport: (id: string) => request<Report>(endpoints.report(id)),
+  getTranscript: (id: string) => request<Transcript>(endpoints.transcript(id)),
+  getBiometrics: (id: string) => request<BiometricSeries>(`${endpoints.biometrics(id)}?max_points=300`),
+  getSuggestions: (id: string) => request<{ session_id: string; items: Suggestion[] }>(endpoints.suggestions(id)),
 }
 
 export type Api = typeof realApi
 
 export const api: Api = USE_MOCK ? mockApi : realApi
+
+// Company names for results/history; the session only carries company_id.
+let companiesPromise: Promise<Company[]> | null = null
+export function getCompanies() {
+  companiesPromise ??= api.listCompanies().catch((err) => {
+    companiesPromise = null
+    throw err
+  })
+  return companiesPromise
+}
+
+export function errorMessage(err: unknown, fallback: string) {
+  return err instanceof Error && err.message ? err.message : fallback
+}
