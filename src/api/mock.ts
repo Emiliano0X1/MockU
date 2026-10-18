@@ -23,7 +23,15 @@ import type {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const now = () => new Date().toISOString()
-const uuid = () => crypto.randomUUID()
+// crypto.randomUUID only exists on secure pages; the phone loads the dev
+// server over plain http on the LAN.
+const uuid = () =>
+  typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+      })
 
 let profile: Profile | null = null
 let resume: ResumeInfo | null = null
