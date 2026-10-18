@@ -5,9 +5,9 @@ import { ensureGlassesPage, getBridge } from './bridge'
 // long at rest), so a head tilt shifts gravity between axes. Tune these with
 // the live readout on the "Test glasses texts" screen.
 export const TILT = {
-  axis: 'x' as 'x' | 'y' | 'z', // the axis that moves when the head tilts left/right
+  axis: 'y' as 'x' | 'y' | 'z', // the axis that moves when the head tilts left/right
   mode: 'angle' as 'angle' | 'rate', // 'rate' integrates the readings into an angle
-  threshold: 0.25, // readings are in g (gravity ~1.0 total); 0.25 is roughly a 15° tilt
+  threshold: 0.12, // readings are in g (gravity ~1.0 total); 0.12 is roughly a 7° tilt
   invert: false, // flip if tilting left is detected as right
   holdMs: 1000, // how long a tilt must be held to choose
   calibrationSamples: 8, // readings averaged as the resting position
