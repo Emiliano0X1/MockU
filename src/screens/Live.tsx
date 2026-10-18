@@ -6,11 +6,14 @@ import { INTERVIEW_LIMIT_SECONDS, WRAP_UP_SECONDS } from '../api/config'
 import { connectLive, type LiveConnection } from '../api/live'
 import type { Interview, LiveEvent, Question } from '../api/types'
 import { Bars, icons, Mocky } from '../components/ui'
-import { getBridge, showOnGlasses } from '../glasses/bridge'
+import { getBridge, setGlassesLabel, showOnGlasses } from '../glasses/bridge'
 import { recordAnswer, type Recording } from '../glasses/recorder'
-import { glassesTexts } from '../glasses/texts'
+import { countdownLabel, glassesTexts } from '../glasses/texts'
 
-type Phase = 'starting' | 'waiting' | 'hmm' | 'asking' | 'saving' | 'analyzing'
+type Phase = 'starting' | 'waiting' | 'hmm' | 'reading' | 'asking' | 'saving' | 'analyzing'
+
+const COUNTDOWN_FROM = 5
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const LEVEL_HISTORY = 96
 
@@ -60,15 +63,26 @@ export function Live({ interview, nav }: { interview: Interview; nav: Nav }) {
   }, [interview.id])
 
   const ask = useCallback(async (question: Question) => {
-    setPhase('asking')
+    setPhase('reading')
     setError('')
-    showOnGlasses(
-      finalRef.current
-        ? glassesTexts.finalQuestion(question.text)
-        : question.kind === 'followup'
-          ? glassesTexts.followUp(question.text)
-          : glassesTexts.question(question.text),
-    )
+    const view = finalRef.current
+      ? glassesTexts.finalQuestion(question.text)
+      : question.kind === 'followup'
+        ? glassesTexts.followUp(question.text)
+        : glassesTexts.question(question.text)
+    await showOnGlasses(view)
+
+    // 5 4 3 2 1 GO in the glasses only, then start listening.
+    for (let n = COUNTDOWN_FROM; n >= 1; n--) {
+      if (ended.current) return
+      setGlassesLabel(countdownLabel(n))
+      await wait(1000)
+    }
+    if (ended.current) return
+    setGlassesLabel(countdownLabel(0))
+    setTimeout(() => setGlassesLabel(view.label), 900)
+    setPhase('asking')
+
     // Silence detection and the manual stop can race; only the first one saves.
     let submitted = false
     const submit = (wav: Blob) => {
@@ -166,7 +180,7 @@ export function Live({ interview, nav }: { interview: Interview; nav: Nav }) {
     setPhase('analyzing')
   }
 
-  const inGlasses = phase === 'asking' || finalRound
+  const inGlasses = phase === 'reading' || phase === 'asking' || finalRound
   const status = statusText(phase, finalRound)
 
   if (phase === 'analyzing') {
@@ -283,12 +297,14 @@ export function Live({ interview, nav }: { interview: Interview; nav: Nav }) {
 }
 
 function statusText(phase: Phase, finalRound: boolean) {
-  if (phase === 'asking' && finalRound) return { title: 'Final round', body: 'Mocky stays in your glasses until the end.' }
+  if ((phase === 'reading' || phase === 'asking') && finalRound) return { title: 'Final round', body: 'Mocky stays in your glasses until the end.' }
   switch (phase) {
     case 'starting':
       return { title: 'Mocky is with you', body: 'Get comfortable. The first question is coming.' }
     case 'hmm':
       return { title: 'Mocky wants more detail', body: 'A follow-up is coming.' }
+    case 'reading':
+      return { title: 'Mocky is in your glasses', body: 'Read the question.' }
     case 'asking':
       return { title: 'Mocky is in your glasses', body: 'Take your time. When you finish, tap the button or your glasses.' }
     case 'saving':

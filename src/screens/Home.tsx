@@ -1,8 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Nav } from '../App'
 import { api } from '../api/client'
 import type { User } from '../api/types'
 import { icons, Logo, Mocky } from '../components/ui'
+import { setGlassesLabel, showOnGlasses } from '../glasses/bridge'
+import { glassesTexts, tiltLabel } from '../glasses/texts'
+import { recalibrateTilt, watchTilt } from '../glasses/tilt'
 import { useGlassesStatus } from '../glasses/useGlassesStatus'
 
 type Props = {
@@ -46,6 +49,41 @@ export function Home({ user, onUser, nav, onSignOut }: Props) {
       setStarting(false)
     }
   }
+
+  // Welcome screen in the glasses; tilting left/right and holding picks a mock.
+  const startRef = useRef(start)
+  startRef.current = start
+  useEffect(() => {
+    if (starting) return
+    if (!ready) {
+      showOnGlasses(glassesTexts.welcomeNeedsResume(firstName))
+      return
+    }
+    const welcome = glassesTexts.welcome(firstName)
+    showOnGlasses(welcome)
+    let lastLabel = welcome.label
+    let resetTimer: ReturnType<typeof setTimeout> | undefined
+    const setLabel = (label: string) => {
+      if (label === lastLabel) return
+      lastLabel = label
+      setGlassesLabel(label)
+    }
+    const stop = watchTilt({
+      onLean: (side, progress) => setLabel(side ? tiltLabel(side, progress) : welcome.label),
+      onChoose: (side) => {
+        if (side === 'left') return startRef.current()
+        showOnGlasses(glassesTexts.systemDesignSoon())
+        resetTimer = setTimeout(() => {
+          lastLabel = welcome.label
+          showOnGlasses(welcome)
+        }, 2500)
+      },
+    })
+    return () => {
+      clearTimeout(resetTimer)
+      stop.then((fn) => fn())
+    }
+  }, [ready, starting, firstName])
 
   return (
     <main className="screen stripes">
@@ -107,6 +145,12 @@ export function Home({ user, onUser, nav, onSignOut }: Props) {
         </button>
       </section>
 
+      {ready && glasses.available && (
+        <div className="stack" style={{ alignItems: 'center', gap: 8, paddingTop: 12 }}>
+          <p className="small" style={{ textAlign: 'center' }}>Or tilt your head and hold in the glasses.</p>
+          <button className="pill" onClick={recalibrateTilt}>Recalibrate tilt (hold head straight)</button>
+        </div>
+      )}
       {error && <p className="error" role="alert" style={{ paddingTop: 12 }}>{error}</p>}
 
       <div className="spacer" />

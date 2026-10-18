@@ -1,8 +1,8 @@
 {
-  "package_id": "com.gabrielrivera.myfirstapp",
+  "package_id": "com.mocku.myfirstapp",
   "edition": "202601",
-  "name": "My First App",
-  "version": "0.1.0",
+  "name": "MockU",
+  "version": "0.1.3",
   "min_app_version": "2.2.10",
   "min_sdk_version": "0.0.16",
   "entrypoint": "index.html",

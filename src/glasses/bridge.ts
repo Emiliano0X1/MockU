@@ -5,6 +5,7 @@ import {
   RebuildPageContainer,
   StartUpPageCreateResult,
   TextContainerProperty,
+  TextContainerUpgrade,
   waitForEvenAppBridge,
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk'
@@ -24,6 +25,7 @@ export type GlassesView = {
 let bridgePromise: Promise<EvenAppBridge | null> | null = null
 let pageCreated = false
 let lastView = ''
+let currentView: GlassesView | null = null
 
 // Resolves to null outside the Even App WebView (e.g. a desktop browser).
 export function getBridge(): Promise<EvenAppBridge | null> {
@@ -39,12 +41,22 @@ export function getBridge(): Promise<EvenAppBridge | null> {
   return bridgePromise
 }
 
-export async function showOnGlasses(view: GlassesView): Promise<boolean> {
+// Page updates run one at a time so two callers can't both create the startup page.
+let queue: Promise<unknown> = Promise.resolve()
+
+export function showOnGlasses(view: GlassesView): Promise<boolean> {
+  const run = queue.then(() => render(view))
+  queue = run.catch(() => {})
+  return run
+}
+
+async function render(view: GlassesView): Promise<boolean> {
   const key = JSON.stringify(view)
   if (key === lastView) return true
   const bridge = await getBridge()
   if (!bridge) return false
   lastView = key
+  currentView = view
 
   const textObject = [
     new TextContainerProperty({
@@ -108,5 +120,23 @@ export async function showOnGlasses(view: GlassesView): Promise<boolean> {
 
 // The glasses mic needs a page on the glasses before it can open.
 export async function ensureGlassesPage() {
+  await queue
   if (!pageCreated) await showOnGlasses({ mocky: false, label: 'MockU', text: '' })
+}
+
+// Changes only the small label line (used for countdowns and tilt feedback)
+// without rebuilding the page or re-sending Mocky.
+export async function setGlassesLabel(label: string): Promise<boolean> {
+  const bridge = await getBridge()
+  if (!bridge || !pageCreated || !currentView) return false
+  currentView = { ...currentView, label }
+  lastView = JSON.stringify(currentView)
+  try {
+    return await bridge.textContainerUpgrade(
+      new TextContainerUpgrade({ containerID: LABEL.id, containerName: LABEL.name, content: label }),
+    )
+  } catch (error) {
+    console.error('Glasses label update failed', error)
+    return false
+  }
 }

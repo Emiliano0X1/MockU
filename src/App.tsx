@@ -46,7 +46,7 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (route.name === 'home') showOnGlasses(glassesTexts.idle())
+    if (route.name === 'signIn' || route.name === 'signUp') showOnGlasses(glassesTexts.idle())
     window.scrollTo(0, 0)
   }, [route])
 
