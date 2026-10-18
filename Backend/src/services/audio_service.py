@@ -103,7 +103,7 @@ def upload_audio_and_start_processing(
         "session_id": str(session_id),
         "storage_path": storage_path,
         "duration_ms": duration_ms,
-        "file_format": ext,
+        #"file_format": ext,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 

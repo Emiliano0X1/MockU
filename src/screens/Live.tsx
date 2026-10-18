@@ -1,14 +1,14 @@
-import { OsEventTypeList } from '@evenrealities/even_hub_sdk'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Nav } from '../App'
 import { api, ApiError, errorMessage } from '../api/client'
 import { BREATHER_SECONDS, INTERVIEW_LIMIT_SECONDS, SILENCE_SECONDS_TO_END } from '../api/config'
 import { connectGlassesSocket } from '../api/live'
 import type { Company, GlassesMessage, SessionCreated } from '../api/types'
-import { Bars, icons, Mocky } from '../components/ui'
-import { getBridge, setGlassesLabel, showOnGlasses } from '../glasses/bridge'
+import { Bars, formatTime, icons, Mocky } from '../components/ui'
+import { setGlassesLabel, showOnGlasses, type GlassesView } from '../glasses/bridge'
+import { useGlassesInput } from '../glasses/input'
 import { recordSession, type SessionRecording } from '../glasses/recorder'
-import { countdownLabel, glassesTexts, tipLabel } from '../glasses/texts'
+import { answeringLabel, countdownLabel, glassesTexts, tipLabel } from '../glasses/texts'
 
 type Phase = 'starting' | 'reading' | 'asking' | 'breather' | 'saving' | 'failed'
 type Sensor = { state: 'connecting' | 'online' | 'offline' | 'unavailable'; lastBpm: number | null }
@@ -39,13 +39,24 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
   const pendingUpload = useRef<{ wav: Blob; durationMs: number } | null>(null)
 
   // The glasses label line shows the countdown or question label, unless a
-  // heart-rate tip is showing on top of it.
+  // heart-rate tip is showing on top of it. While "End the interview?" is up
+  // in the glasses, page and label updates are held and replayed on cancel.
   const baseLabel = useRef('')
   const tipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const confirming = useRef(false)
+  const pageView = useRef<GlassesView>(glassesTexts.starting())
   const setLabel = (label: string) => {
     baseLabel.current = label
-    if (!tipTimer.current) setGlassesLabel(label)
+    if (!tipTimer.current && !confirming.current) setGlassesLabel(label)
   }
+  const showPage = (view: GlassesView) => {
+    pageView.current = view
+    baseLabel.current = view.label
+    return confirming.current ? Promise.resolve(true) : showOnGlasses(view)
+  }
+
+  // Seconds spent on the current answer, on the phone and in the glasses.
+  const [answerSeconds, setAnswerSeconds] = useState(0)
 
   const endAnswer = useCallback(() => {
     const current = answer.current
@@ -99,6 +110,7 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
   const finish = useCallback(async () => {
     if (finishing.current) return
     finishing.current = true
+    confirming.current = false
     answer.current = null
     setConfirmEnd(false)
     setPhase('saving')
@@ -125,11 +137,11 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
     } else if (message.type === 'suggestion') {
       clearTimeout(tipTimer.current)
       setTip(message.text)
-      setGlassesLabel(tipLabel(message.text))
+      if (!confirming.current) setGlassesLabel(tipLabel(message.text))
       tipTimer.current = setTimeout(() => {
         tipTimer.current = undefined
         setTip(null)
-        setGlassesLabel(baseLabel.current)
+        if (!confirming.current) setGlassesLabel(baseLabel.current)
       }, message.ttl_ms)
     }
   }, [])
@@ -144,7 +156,7 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
 
     const run = async () => {
       const h = () => handlerRef.current
-      showOnGlasses(glassesTexts.starting())
+      showPage(glassesTexts.starting())
       recording.current = recordSession({ startedAt: t0.current, onAudio: (level, speech) => h().onAudio(level, speech) })
       recording.current.catch(() => {})
       const socket = connectGlassesSocket(
@@ -159,8 +171,7 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
         if (cancelled || finishing.current) return
         setPhase('reading')
         const view = glassesTexts.question(question.text)
-        baseLabel.current = view.label
-        await showOnGlasses(view)
+        await showPage(view)
         api.markQuestionShown(session.id, question.position, elapsedMs()).catch((err) => console.warn('Question timing not saved', err))
 
         // 5 4 3 2 1 GO in the glasses only, then listen.
@@ -169,8 +180,8 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
           setLabel(countdownLabel(n))
           await wait(1000)
         }
+        // "GO" stays up until the elapsed-time label takes over a second later.
         setLabel(countdownLabel(0))
-        setTimeout(() => !finishing.current && setLabel(view.label), 900)
         setPhase('asking')
         await new Promise<void>((resolve) => (answer.current = { heardSpeech: false, silentSince: null, resolve }))
         if (cancelled || finishing.current) return
@@ -178,7 +189,7 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
         const last = i === session.questions.length - 1
         if (last || elapsedMs() / 1000 >= INTERVIEW_LIMIT_SECONDS) break
         setPhase('breather')
-        await showOnGlasses(glassesTexts.answerReceived())
+        await showPage(glassesTexts.answerReceived())
         await wait(BREATHER_SECONDS * 1000)
       }
       if (!cancelled) h().finish()
@@ -192,32 +203,55 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
       closeSocket()
       answer.current?.resolve()
       answer.current = null
-      // Leaving mid-interview: release the mic. finish() already stopped it otherwise.
-      if (!finishing.current) recording.current?.then((rec) => rec.stop()).catch(() => {})
+      // Leaving mid-interview: release the mic, and end the session on the server
+      // so it stops tracking the watch (it allows one live interview at a time).
+      // finish() already did both otherwise.
+      if (!finishing.current && recording.current) {
+        recording.current.then((rec) => rec.stop()).catch(() => {})
+        api.endSession(session.id).catch(() => {})
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id])
 
-  // A tap on the glasses also ends the answer.
+  // Glasses: press ends the answer; double press asks "End the interview?",
+  // answered from a list in the glasses (or the same sheet on the phone).
+  useGlassesInput((input) => {
+    if (phase === 'saving' || phase === 'failed') return
+    if (confirmEnd) {
+      if (input.kind === 'select' && input.index === 1) finish()
+      else if (input.kind === 'select' || input.kind === 'double') setConfirmEnd(false)
+      return
+    }
+    if (input.kind === 'press' && phase === 'asking') endAnswer()
+    else if (input.kind === 'double') setConfirmEnd(true)
+  })
+
+  // Mirror the end-confirmation into the glasses, and put the interview back on cancel.
+  useEffect(() => {
+    if (finishing.current) return
+    if (confirmEnd) {
+      confirming.current = true
+      showOnGlasses(glassesTexts.confirmEnd())
+    } else if (confirming.current) {
+      confirming.current = false
+      showOnGlasses({ ...pageView.current, label: tipTimer.current && tip ? tipLabel(tip) : baseLabel.current })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmEnd])
+
+  // Elapsed time on the current answer.
   useEffect(() => {
     if (phase !== 'asking') return
-    let cancelled = false
-    let unsubscribe: (() => void) | undefined
-    getBridge().then((bridge) => {
-      if (!bridge || cancelled) return
-      unsubscribe = bridge.onEvenHubEvent((event) => {
-        if (event.sysEvent?.imuData) return
-        const press = event.textEvent ?? event.sysEvent
-        // CLICK_EVENT is 0, the protobuf default, so it often arrives with eventType omitted.
-        if (press && (press.eventType ?? OsEventTypeList.CLICK_EVENT) === OsEventTypeList.CLICK_EVENT) {
-          handlerRef.current.endAnswer()
-        }
-      })
-    })
-    return () => {
-      cancelled = true
-      unsubscribe?.()
-    }
+    const started = performance.now()
+    setAnswerSeconds(0)
+    const tick = setInterval(() => {
+      const seconds = Math.floor((performance.now() - started) / 1000)
+      setAnswerSeconds(seconds)
+      setLabel(answeringLabel(seconds))
+    }, 1000)
+    return () => clearInterval(tick)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase])
 
   const inGlasses = phase === 'reading' || phase === 'asking'
@@ -297,7 +331,7 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <span style={{ fontWeight: 700, fontSize: 13 }}>Your voice</span>
           <span style={{ fontWeight: 600, fontSize: 12, color: phase === 'asking' ? 'var(--sky)' : 'var(--ink-3)' }}>
-            {phase === 'asking' ? 'Listening' : 'Recording'}
+            {phase === 'asking' ? `Listening · ${formatTime(answerSeconds)}` : 'Recording'}
           </span>
         </div>
         <div style={{ opacity: phase === 'asking' ? 1 : 0.35, transition: 'opacity 0.3s ease' }}>

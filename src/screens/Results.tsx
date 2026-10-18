@@ -5,6 +5,7 @@ import type { Finding, Severity } from '../api/types'
 import { HeartChart } from '../components/HeartChart'
 import { icons, Mocky } from '../components/ui'
 import { showOnGlasses } from '../glasses/bridge'
+import { useGlassesInput } from '../glasses/input'
 import { glassesTexts } from '../glasses/texts'
 import { forgetSessionReport, formatMs, useSessionReport, type SessionReport } from './useSessionReport'
 
@@ -13,10 +14,35 @@ export const severityColor: Record<Severity, string> = { high: '#E5484D', medium
 
 export function Results({ sessionId, nav }: { sessionId: string; nav: Nav }) {
   const { state, retry, reprocess } = useSessionReport(sessionId)
+  // In the glasses: a menu (summary, each moment, back home) or the summary text.
+  const [glassesPage, setGlassesPage] = useState<'menu' | 'summary'>('menu')
+  const data = state.kind === 'done' ? state.data : null
+  const findings = data?.report.findings ?? []
 
   useEffect(() => {
-    if (state.kind === 'done') showOnGlasses(glassesTexts.done())
-  }, [state.kind])
+    if (state.kind === 'loading' || state.kind === 'processing') {
+      showOnGlasses(glassesTexts.reviewing())
+    } else if (!data) {
+      showOnGlasses({ mocky: true, label: 'Results · 2x press home', text: 'Something went wrong. Check your phone.' })
+    } else if (glassesPage === 'summary') {
+      showOnGlasses(glassesTexts.readBack('Summary', summaryText(data)))
+    } else {
+      showOnGlasses(glassesTexts.resultsMenu(data.report.overall_score, ['Summary', ...findings.map(findingItem), 'Back home']))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.kind, data, glassesPage])
+
+  useGlassesInput((input) => {
+    if (glassesPage === 'summary' && data) {
+      if (input.kind === 'double') setGlassesPage('menu')
+      return
+    }
+    if (input.kind === 'double') return nav({ name: 'home' })
+    if (input.kind !== 'select' || !data) return
+    if (input.index === 0) setGlassesPage('summary')
+    else if (input.index <= findings.length) nav({ name: 'moment', sessionId, findingId: findings[input.index - 1]!.id })
+    else nav({ name: 'home' })
+  })
 
   if (state.kind !== 'done') {
     const message = {
@@ -200,6 +226,32 @@ function BulletList({ items }: { items: string[] }) {
       ))}
     </ul>
   )
+}
+
+const severityShort: Record<Severity, string> = { high: 'HIGH', medium: 'MED', low: 'LOW' }
+
+export function findingItem(finding: Finding) {
+  return `[${severityShort[finding.severity]}] ${finding.title}`
+}
+
+// The results page as plain text for the glasses.
+function summaryText({ report, tips }: SessionReport) {
+  const { summary } = report
+  const scores = [
+    ['Communication', summary.communication_score],
+    ['Technical depth', summary.technical_depth_score],
+    ['Composure', summary.composure_score],
+  ].filter(([, value]) => typeof value === 'number')
+  return [
+    `Score ${report.overall_score ?? '--'}/100`,
+    summary.overview ?? headline(report.overall_score),
+    scores.map(([name, value]) => `${name}: ${value}`).join('\n'),
+    summary.key_strengths?.length ? `What landed\n${summary.key_strengths.map((s) => `- ${s}`).join('\n')}` : '',
+    summary.areas_for_growth?.length ? `What to fix\n${summary.areas_for_growth.map((s) => `- ${s}`).join('\n')}` : '',
+    tips.length ? `Live tips\n${tips.map((t) => `- ${formatMs(t.t_ms)} ${t.text}`).join('\n')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 function headline(score: number | null) {

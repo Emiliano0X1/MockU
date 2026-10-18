@@ -1,11 +1,41 @@
+import { useEffect } from 'react'
 import type { Nav } from '../App'
+import type { Finding } from '../api/types'
 import { HeartChart } from '../components/HeartChart'
 import { BackButton, Mocky } from '../components/ui'
+import { showOnGlasses } from '../glasses/bridge'
+import { useGlassesInput } from '../glasses/input'
+import { glassesTexts } from '../glasses/texts'
 import { FindingRow, severityColor, severityTag } from './Results'
-import { formatMs, useSessionReport } from './useSessionReport'
+import { formatMs, useSessionReport, type SessionReport } from './useSessionReport'
 
 // Context shown around a finding, before and after it.
 const CONTEXT_MS = 5000
+
+function momentContext({ segments, detail }: SessionReport, finding: Finding) {
+  const from = Math.max(0, finding.start_ms - CONTEXT_MS)
+  const to = finding.end_ms + CONTEXT_MS
+  const said = segments.filter((s) => s.end_ms >= from && s.start_ms <= to)
+  // The question on screen when this happened.
+  const question = [...detail.questions]
+    .filter((q) => q.asked_at_ms != null && q.asked_at_ms <= finding.start_ms)
+    .sort((a, b) => b.asked_at_ms! - a.asked_at_ms!)[0]
+  return { from, to, said, question }
+}
+
+// The moment as plain text for the glasses.
+function momentText(data: SessionReport, finding: Finding, hasNext: boolean) {
+  const { said, question } = momentContext(data, finding)
+  return [
+    `${finding.title} (${finding.severity})`,
+    finding.details.note ?? '',
+    question ? `During: ${question.text}` : '',
+    said.length ? `You said:\n${said.map((s) => `${formatMs(s.start_ms)} ${s.text}`).join('\n')}` : '',
+    hasNext ? 'Press for the next moment.' : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
 
 // One finding from the report: what Mocky noticed, what you said around that
 // time, and your heart rate then.
@@ -14,6 +44,20 @@ export function Moment({ sessionId, findingId, nav }: { sessionId: string; findi
   const back = () => nav({ name: 'results', sessionId })
 
   const finding = state.kind === 'done' ? (state.data.report.findings.find((f) => f.id === findingId) ?? state.data.report.findings[0]) : undefined
+  const findings = state.kind === 'done' ? state.data.report.findings : []
+  const nextFinding = finding ? findings[(findings.indexOf(finding) + 1) % findings.length] : undefined
+
+  // Glasses: the moment as scrollable text; press for the next one, double press back.
+  useEffect(() => {
+    if (state.kind !== 'done' || !finding) return
+    showOnGlasses(glassesTexts.readBack(`Moment ${formatMs(finding.start_ms)}`, momentText(state.data, finding, findings.length > 1)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.kind, finding?.id])
+
+  useGlassesInput((input) => {
+    if (input.kind === 'double') back()
+    else if (input.kind === 'press' && nextFinding && nextFinding !== finding) nav({ name: 'moment', sessionId, findingId: nextFinding.id })
+  })
 
   if (state.kind !== 'done' || !finding) {
     return (
@@ -25,17 +69,10 @@ export function Moment({ sessionId, findingId, nav }: { sessionId: string; findi
     )
   }
 
-  const { report, segments, heart, detail } = state.data
-  const findings = report.findings
+  const { heart } = state.data
 
-  const from = Math.max(0, finding.start_ms - CONTEXT_MS)
-  const to = finding.end_ms + CONTEXT_MS
-  const said = segments.filter((s) => s.end_ms >= from && s.start_ms <= to)
+  const { from, to, said, question } = momentContext(state.data, finding)
   const inside = (s: { start_ms: number; end_ms: number }) => s.end_ms >= finding.start_ms && s.start_ms <= finding.end_ms
-  // The question on screen when this happened.
-  const question = [...detail.questions]
-    .filter((q) => q.asked_at_ms != null && q.asked_at_ms <= finding.start_ms)
-    .sort((a, b) => b.asked_at_ms! - a.asked_at_ms!)[0]
   const others = findings.filter((f) => f.id !== finding.id)
 
   return (

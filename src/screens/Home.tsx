@@ -5,7 +5,8 @@ import type { ExperienceLevel, Profile, ResumeInfo } from '../api/types'
 import { icons, Logo, Mocky } from '../components/ui'
 import { setGlassesLabel, showOnGlasses } from '../glasses/bridge'
 import { glassesTexts, tiltLabel } from '../glasses/texts'
-import { recalibrateTilt, watchTilt } from '../glasses/tilt'
+import { useGlassesInput } from '../glasses/input'
+import { recalibrateTilt, watchTilt, type Side } from '../glasses/tilt'
 import { useGlassesStatus } from '../glasses/useGlassesStatus'
 import { LevelPicker, levelNames } from './Setup'
 
@@ -69,37 +70,61 @@ export function Home({ profile, resume, onProfile, onResume, nav, onSignOut }: P
     }
   }
 
-  // Welcome screen in the glasses; tilting left/right and holding picks a mock.
-  const startRef = useRef(start)
-  startRef.current = start
+  // Glasses welcome: Behavioral on the left, System design on the right, the
+  // same sides as the head tilt. Tilting toward a side selects it (and holding
+  // picks it); swiping moves the selection; a press picks the selected one.
+  const [selected, setSelected] = useState<Side>('left')
+  const [showingSoon, setShowingSoon] = useState(false)
+  const shownLabel = useRef('')
+  const soonTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const choose = (side: Side) => {
+    if (side === 'left') return start()
+    setShowingSoon(true)
+    clearTimeout(soonTimer.current)
+    soonTimer.current = setTimeout(() => setShowingSoon(false), 2500)
+  }
+
+  useGlassesInput((input) => {
+    if (!ready || starting || showingSoon) return
+    if (input.kind === 'up') setSelected('left')
+    else if (input.kind === 'down') setSelected('right')
+    else if (input.kind === 'press') choose(selected)
+  })
+
   useEffect(() => {
     if (starting) return
-    if (!ready) {
-      showOnGlasses(glassesTexts.welcomeNeedsResume(firstName))
-      return
+    if (!ready) showOnGlasses(glassesTexts.welcomeNeedsResume(firstName))
+    else if (showingSoon) showOnGlasses(glassesTexts.systemDesignSoon())
+    else {
+      const view = glassesTexts.homeChoice(firstName, selected)
+      shownLabel.current = view.label
+      showOnGlasses(view)
     }
-    const welcome = glassesTexts.welcome(firstName)
-    showOnGlasses(welcome)
-    let lastLabel = welcome.label
-    let resetTimer: ReturnType<typeof setTimeout> | undefined
+  }, [ready, starting, firstName, selected, showingSoon])
+
+  useEffect(() => () => clearTimeout(soonTimer.current), [])
+
+  // Head tilt runs for as long as the welcome is up; changing the selection
+  // must not restart it, since restarting recalibrates the resting position.
+  const chooseRef = useRef(choose)
+  chooseRef.current = choose
+  useEffect(() => {
+    if (starting || !ready) return
+    const welcomeLabel = glassesTexts.homeChoice(firstName, 'left').label
     const setLabel = (label: string) => {
-      if (label === lastLabel) return
-      lastLabel = label
+      if (label === shownLabel.current) return
+      shownLabel.current = label
       setGlassesLabel(label)
     }
     const stop = watchTilt({
-      onLean: (side, progress) => setLabel(side ? tiltLabel(side, progress) : welcome.label),
-      onChoose: (side) => {
-        if (side === 'left') return startRef.current()
-        showOnGlasses(glassesTexts.systemDesignSoon())
-        resetTimer = setTimeout(() => {
-          lastLabel = welcome.label
-          showOnGlasses(welcome)
-        }, 2500)
+      onLean: (side, progress) => {
+        if (side) setSelected(side)
+        setLabel(side ? tiltLabel(side, progress) : welcomeLabel)
       },
+      onChoose: (side) => chooseRef.current(side),
     })
     return () => {
-      clearTimeout(resetTimer)
       stop.then((fn) => fn())
     }
   }, [ready, starting, firstName])
@@ -166,7 +191,7 @@ export function Home({ profile, resume, onProfile, onResume, nav, onSignOut }: P
 
       {ready && glasses.available && (
         <div className="stack" style={{ alignItems: 'center', gap: 8, paddingTop: 12 }}>
-          <p className="small" style={{ textAlign: 'center' }}>Or tilt your head and hold in the glasses.</p>
+          <p className="small" style={{ textAlign: 'center' }}>Or choose in your glasses: tilt left for Behavioral, right for System design, and hold. Swiping and pressing also works.</p>
           <button className="pill" onClick={recalibrateTilt}>Recalibrate tilt (hold head straight)</button>
         </div>
       )}

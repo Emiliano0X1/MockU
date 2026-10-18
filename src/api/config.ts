@@ -7,6 +7,9 @@
 export const API_URL: string = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 export const USE_MOCK = API_URL === ''
 
+// DEBUG: shows which server this build talks to.
+console.log(USE_MOCK ? '[api] VITE_API_URL is empty: using the in-browser mock server' : `[api] using server ${API_URL}`)
+
 const v1 = '/api/v1'
 
 export const endpoints = {

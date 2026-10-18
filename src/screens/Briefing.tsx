@@ -5,7 +5,18 @@ import { BRIEFING_SECONDS } from '../api/config'
 import type { Company, Profile, ResumeInfo } from '../api/types'
 import { BackButton, formatTime, Mocky } from '../components/ui'
 import { showOnGlasses } from '../glasses/bridge'
+import { useGlassesInput } from '../glasses/input'
 import { glassesTexts } from '../glasses/texts'
+
+function companySummary(company: Company) {
+  const parts = [
+    company.industry,
+    company.culture_summary,
+    company.values.length ? `Values\n${company.values.map((v) => `- ${v.name}: ${v.description}`).join('\n')}` : '',
+    'Swipe to scroll. Double press when you are ready.',
+  ]
+  return parts.filter(Boolean).join('\n\n')
+}
 
 type Props = { company: Company; profile: Profile; resume: ResumeInfo; nav: Nav }
 
@@ -15,12 +26,18 @@ export function Briefing({ company, profile, resume, nav }: Props) {
   const [error, setError] = useState('')
   const startedRef = useRef(false)
 
+  // The same summary as the phone, as scrollable text in the glasses.
   useEffect(() => {
-    showOnGlasses(glassesTexts.briefing(company.name))
+    showOnGlasses(glassesTexts.briefingSummary(company.name, companySummary(company)))
     const started = Date.now()
     const tick = setInterval(() => setLeft(Math.max(0, BRIEFING_SECONDS - (Date.now() - started) / 1000)), 1000)
     return () => clearInterval(tick)
-  }, [company.name])
+  }, [company])
+
+  // Swipe scrolls the text natively; double press means "I'm ready".
+  useGlassesInput((input) => {
+    if (input.kind === 'double') begin()
+  })
 
   // Creating the session starts the interview clock on the server, so it
   // happens only when the candidate is ready (or the briefing runs out).
@@ -31,6 +48,11 @@ export function Briefing({ company, profile, resume, nav }: Props) {
     setError('')
     try {
       const session = await api.createSession(profile.id, company.id, resume.id)
+      if (session.questions.length === 0) {
+        // The server's question bank is empty; don't run an empty interview.
+        api.deleteSession(session.id).catch(() => {})
+        throw new Error('The server has no interview questions yet. Add some to the questions table and try again.')
+      }
       nav({ name: 'live', session, company })
     } catch (err) {
       startedRef.current = false

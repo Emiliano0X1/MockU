@@ -3,6 +3,9 @@ import type { Nav } from '../App'
 import { api, errorMessage } from '../api/client'
 import type { SessionListItem, SessionStatus } from '../api/types'
 import { BackButton, icons, Mocky } from '../components/ui'
+import { showOnGlasses } from '../glasses/bridge'
+import { useGlassesInput } from '../glasses/input'
+import { glassesTexts } from '../glasses/texts'
 
 const statusNames: Record<SessionStatus, string> = {
   recording: 'Not finished',
@@ -21,6 +24,22 @@ export function History({ profileId, nav }: { profileId: string; nav: Nav }) {
       .then((list) => setItems(list.items))
       .catch((err) => setError(errorMessage(err, "Couldn't load your mocks.")))
   }, [profileId])
+
+  // Glasses: list of mocks, press opens one, double press goes home.
+  useEffect(() => {
+    if (error) showOnGlasses({ mocky: true, label: 'My mocks · 2x press home', text: "Couldn't load your mocks." })
+    else if (!items) showOnGlasses({ mocky: true, label: 'My mocks', text: 'Loading…' })
+    else if (items.length === 0) showOnGlasses(glassesTexts.historyEmpty())
+    else
+      showOnGlasses(
+        glassesTexts.historyMenu(items.map((item) => `${item.overall_score ?? '--'}  ${item.company.name}  ${formatDate(item.started_at)}`)),
+      )
+  }, [items, error])
+
+  useGlassesInput((input) => {
+    if (input.kind === 'double') nav({ name: 'home' })
+    else if (input.kind === 'select' && items?.[input.index]) nav({ name: 'results', sessionId: items[input.index]!.id })
+  })
 
   // Newest first, as the server returns them; only finished, scored mocks count for the trend.
   const scored = (items ?? []).filter((item): item is SessionListItem & { overall_score: number } => item.overall_score != null)

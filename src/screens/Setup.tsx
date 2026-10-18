@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { api, errorMessage } from '../api/client'
+import { API_URL, USE_MOCK } from '../api/config'
 import type { ExperienceLevel, Profile } from '../api/types'
 import { Logo, Mocky } from '../components/ui'
 
@@ -17,9 +18,14 @@ export function Setup({ onProfile }: { onProfile: (profile: Profile) => void }) 
     if (!level) return setError('Pick the role you are interviewing for.')
     setBusy(true)
     setError('')
+    // DEBUG: remove once profile creation is confirmed against the real server.
+    console.log('[setup] creating profile', { full_name: name.trim(), experience_level: level, server: USE_MOCK ? 'mock' : API_URL })
     try {
-      onProfile(await api.createProfile(name.trim(), level))
+      const profile = await api.createProfile(name.trim(), level)
+      console.log('[setup] profile created', profile)
+      onProfile(profile)
     } catch (err) {
+      console.error('[setup] profile creation failed', err)
       setError(errorMessage(err, 'Something went wrong. Try again.'))
       setBusy(false)
     }
@@ -47,6 +53,10 @@ export function Setup({ onProfile }: { onProfile: (profile: Profile) => void }) 
         <button className="btn" type="submit" disabled={busy || !name.trim()} style={{ marginTop: 4 }}>
           {busy ? 'One moment…' : 'Meet Mocky'}
         </button>
+        {/* DEBUG: which server this build talks to. */}
+        <p className="small" style={{ textAlign: 'center', fontSize: 11 }}>
+          Server: {USE_MOCK ? 'built-in mock (VITE_API_URL is empty)' : API_URL}
+        </p>
       </form>
     </main>
   )

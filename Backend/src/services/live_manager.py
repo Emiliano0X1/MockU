@@ -144,9 +144,9 @@ class LiveSessionManager:
             }
         )
 
-        # Notify glasses if sensor transitioned from offline to online
-        if not prev_online:
-            await self.send_sensor_status(session)
+        # Send every reading (not only the offline -> online transition) so the
+        # app can show the live BPM.
+        await self.send_sensor_status(session)
 
         # Evaluate against spike detector rules
         has_glasses = session.glasses_ws is not None

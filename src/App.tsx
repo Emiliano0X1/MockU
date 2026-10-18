@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, errorMessage, getProfileId, setProfileId } from './api/client'
+import { API_URL, USE_MOCK } from './api/config'
 import type { Company, Profile, ResumeInfo, SessionCreated } from './api/types'
 import { showOnGlasses } from './glasses/bridge'
 import { glassesTexts } from './glasses/texts'
@@ -73,6 +74,8 @@ export function App() {
       return (
         <main className="screen stripes center" style={{ justifyContent: 'center', gap: 12 }}>
           <Mocky size={96} />
+          {/* DEBUG: which server the app is waiting on. */}
+          {!loadError && <p className="small">Connecting to {USE_MOCK ? 'the built-in mock' : API_URL}…</p>}
           {loadError && (
             <>
               <p className="error" role="alert">{loadError}</p>

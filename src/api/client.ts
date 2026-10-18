@@ -49,21 +49,46 @@ export class ApiError extends Error {
   }
 }
 
+// Uploads (resume, interview audio) can be large; everything else should be quick.
+const TIMEOUT_MS = 15000
+const UPLOAD_TIMEOUT_MS = 180000
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')
+  const method = init.method ?? 'GET'
+  const url = API_URL + path
+  const started = performance.now()
+  const ms = () => `${Math.round(performance.now() - started)}ms`
+  // DEBUG: remove once the backend connection is stable.
+  console.log(`[api] → ${method} ${url}`, typeof init.body === 'string' ? init.body : '')
+
+  // Without a timeout, an unreachable address can hang for minutes on the phone.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), init.body instanceof FormData ? UPLOAD_TIMEOUT_MS : TIMEOUT_MS)
   let res: Response
   try {
-    res = await fetch(API_URL + path, { ...init, headers })
-  } catch {
-    throw new ApiError("Can't reach the MockU server. Check your connection.", 'NETWORK_ERROR', 0)
+    res = await fetch(url, { ...init, headers, signal: controller.signal })
+  } catch (err) {
+    const timedOut = controller.signal.aborted
+    console.error(`[api] ✗ ${method} ${url} ${timedOut ? 'timed out' : 'network error'} after ${ms()}`, err)
+    throw new ApiError(
+      timedOut ? `The MockU server at ${API_URL} didn't answer in time.` : `Can't reach the MockU server at ${API_URL}.`,
+      'NETWORK_ERROR',
+      0,
+    )
+  } finally {
+    clearTimeout(timer)
   }
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const error = body?.error
+    console.error(`[api] ✗ ${method} ${url} ${res.status} after ${ms()}`, body)
     throw new ApiError(error?.message ?? `Request failed (${res.status})`, error?.code ?? 'HTTP_ERROR', res.status)
   }
-  return res.status === 204 ? (undefined as T) : res.json()
+  const data = res.status === 204 ? (undefined as T) : await res.json()
+  console.log(`[api] ✓ ${method} ${url} ${res.status} after ${ms()}`, data)
+  return data
 }
 
 const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) })
