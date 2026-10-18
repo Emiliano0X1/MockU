@@ -147,16 +147,20 @@ def get_resume_by_profile_id(profile_id: str) -> Dict[str, Any]:
             code="profile_not_found",
         )
 
-    # 2. Select profile's resume
-    res = (
-        supabase.table("resumes")
-        .select("*")
-        .eq("profile_id", str(profile_id))
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-    if not res.data:
+    # 2. Select profile's resume. The table may name the owner column
+    # profile_id or user_id; querying a missing column raises, so fall back.
+    try:
+        res = (
+            supabase.table("resumes")
+            .select("*")
+            .eq("profile_id", str(profile_id))
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception:
+        res = None
+    if not res or not res.data:
         # Fallback check on user_id column
         res = (
             supabase.table("resumes")

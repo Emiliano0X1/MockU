@@ -53,17 +53,27 @@ def get_session_report(session_id: str) -> Dict[str, Any]:
 
     rep_row = rep_res.data[0]
 
-    # Fetch findings ordered by start_ms
-    find_res = (
-        supabase.table("report_findings")
-        .select("*")
-        .eq("session_id", str(session_id))
-        .order("start_ms")
-        .execute()
-    )
+    # Fetch findings ordered by start_ms. They are linked by report_id; older
+    # schemas used session_id, which raises if the column doesn't exist.
+    try:
+        find_rows = (
+            supabase.table("report_findings")
+            .select("*")
+            .eq("report_id", str(rep_row["id"]))
+            .order("start_ms")
+            .execute()
+        ).data
+    except Exception:
+        find_rows = (
+            supabase.table("report_findings")
+            .select("*")
+            .eq("session_id", str(session_id))
+            .order("start_ms")
+            .execute()
+        ).data
 
     findings_list = []
-    for f in find_res.data or []:
+    for f in find_rows or []:
         findings_list.append(
             {
                 "id": f.get("id"),
@@ -82,7 +92,8 @@ def get_session_report(session_id: str) -> Dict[str, Any]:
         "report": {
             "overall_score": rep_row.get("overall_score"),
             "schema_version": rep_row.get("schema_version", "1.0.0"),
-            "summary": rep_row.get("summary") or {},
+            # The column is summary_json in the current schema (summary in older ones).
+            "summary": rep_row.get("summary_json") or rep_row.get("summary") or {},
             "findings": findings_list,
         },
     }

@@ -56,7 +56,7 @@ router = APIRouter(prefix="/sessions", tags=["Interview Sessions"])
 
 
 @router.post("", response_model=SessionCreateResponse, status_code=status.HTTP_201_CREATED)
-def handle_create_session(payload: SessionCreate):
+async def handle_create_session(payload: SessionCreate):
     """Start a new mock interview session and select randomized questions."""
     # Enforce one active Pulsoid session at a time if live streaming is enabled
     if PULSOID_ENABLED:

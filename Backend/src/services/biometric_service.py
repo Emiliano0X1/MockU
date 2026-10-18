@@ -1,6 +1,7 @@
 import statistics
 from typing import Any, Dict, List, Optional
 from src.core.config import supabase
+from src.core.live_config import detector_config
 from src.core.exceptions import (
     BadRequestException,
     ConflictException,
@@ -104,7 +105,7 @@ def get_biometric_series(
     """
     Retrieve biometric series for frontend dashboard charts.
     Reduces data points to max_points using bucketing (preserving bpm_max).
-    Calculates summary stats and baseline BPM (median of first 90 seconds).
+    Calculates summary stats and baseline BPM (median of the warm-up window).
     """
     # 1. Verify session exists
     s_res = (
@@ -159,8 +160,9 @@ def get_biometric_series(
     max_bpm = max(bpms)
     avg_bpm = round(sum(bpms) / count, 1)
 
-    # Baseline rule: median of the first 60-90 seconds (t_ms <= 90000)
-    baseline_samples = [s["bpm"] for s in samples if s["t_ms"] <= 90000]
+    # Baseline rule: median of the live detector's warm-up window, so the
+    # chart's resting line matches the baseline the live tips used.
+    baseline_samples = [s["bpm"] for s in samples if s["t_ms"] <= detector_config.WARMUP_MS]
     baseline_bpm = (
         int(round(statistics.median(baseline_samples)))
         if len(baseline_samples) >= 3

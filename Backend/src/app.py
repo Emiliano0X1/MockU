@@ -13,6 +13,11 @@ from src.core.exceptions import (
 )
 from src.routes.live import router as live_router
 from src.routes.router import api_v1_router
+import logging
+
+# Show the app's own logs (mocku.live, mocku.analysis) next to uvicorn's.
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s", datefmt="%H:%M:%S")
+logging.getLogger("mocku").setLevel(logging.INFO)
 
 app = FastAPI(
     title="MockU AI Interview Coach API",

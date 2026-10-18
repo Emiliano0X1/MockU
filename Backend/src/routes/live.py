@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timezone
 import json
 from uuid import UUID, uuid4
@@ -20,6 +21,7 @@ from src.models.suggestion import (
 from src.services.live_manager import live_manager
 
 router = APIRouter(tags=["Live Mode"])
+logger = logging.getLogger("mocku.live")
 
 
 @router.websocket("/ws/sessions/{id}/glasses")
@@ -68,6 +70,7 @@ async def glasses_websocket_endpoint(websocket: WebSocket, id: UUID):
                 if msg_type == "ack":
                     suggestion_id = data.get("suggestion_id")
                     if suggestion_id:
+                        logger.info("[%s] glasses acknowledged tip %s", session_id, suggestion_id)
                         now_iso = datetime.now(timezone.utc).isoformat()
                         try:
                             supabase.table("live_suggestions").update(
@@ -190,6 +193,7 @@ async def handle_send_test_suggestion(
         pass
 
     # Push to glasses
+    logger.info("[%s] manual test tip requested: '%s'", session_id, text)
     delivered = await live_manager.push_suggestion(
         session=live_sess,
         suggestion_id=suggestion_id,
