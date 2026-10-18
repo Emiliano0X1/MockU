@@ -1,0 +1,467 @@
+<!doctype html>
+<!-- Source for architecture.png. Re-render from this folder with:
+     chrome --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=2420,1790 --screenshot=architecture.png architecture.html -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>MockU Architecture</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f6f7fb; }
+  svg { display: block; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  .title { font-size: 30px; font-weight: 700; fill: #1f2433; }
+  .subtitle { font-size: 16px; fill: #5b6275; }
+  .h { font-size: 17px; font-weight: 700; fill: #1f2433; }
+  .t { font-size: 13.5px; fill: #3a4052; }
+  .m { font-size: 13.5px; fill: #5b6275; }
+  .sub { font-size: 12.5px; font-weight: 700; fill: #5b6275; letter-spacing: .04em; text-transform: uppercase; }
+  .code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; fill: #2a3042; white-space: pre; }
+  .codeb { font-family: Consolas, "Cascadia Mono", monospace; font-size: 14px; font-weight: 700; fill: #1f2433; }
+  .ep { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; fill: #1f7a7a; }
+  .sch { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; fill: #2a3042; white-space: pre; }
+  .ret { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; fill: #2f7a4f; white-space: pre; }
+  .lbl { font-size: 12.5px; font-weight: 600; fill: #3a4052; }
+  .key { font-size: 13.5px; fill: #3a4052; white-space: pre; }
+  .grp { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .badge text { font-size: 12.5px; font-weight: 700; fill: #fff; text-anchor: middle; dominant-baseline: central; }
+  .b-setup circle { fill: #3b6fd8; }
+  .b-live circle { fill: #d0435b; }
+  .b-ai circle { fill: #6a4fd8; }
+  .b-res circle { fill: #1f2433; }
+  .call { stroke: #1f2433; stroke-width: 2; fill: none; }
+  .net { stroke: #c06a14; stroke-width: 2; fill: none; stroke-dasharray: 7 5; }
+  .flow { stroke: #3b6fd8; stroke-width: 2; fill: none; }
+  .db { stroke: #2f9a6a; stroke-width: 2; fill: none; }
+  .card { fill: #fff; stroke: #cfd3e0; stroke-width: 1.5; }
+</style>
+</head>
+<body>
+<svg width="2420" height="1790" viewBox="0 0 2420 1790" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1f2433"/></marker>
+    <marker id="a-net" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c06a14"/></marker>
+    <marker id="a-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3b6fd8"/></marker>
+    <marker id="a-db" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2f9a6a"/></marker>
+    <filter id="sh" x="-5%" y="-5%" width="110%" height="115%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1f2433" flood-opacity=".08"/></filter>
+  </defs>
+
+  <rect width="2420" height="1790" fill="#f6f7fb"/>
+
+  <!-- Title -->
+  <text x="24" y="52" class="title">MockU: System Architecture &amp; AI Analysis Flow</text>
+  <text x="24" y="82" class="subtitle">How the glasses app, the FastAPI backend, Supabase and the AI service work together, from interview setup to the scored report.</text>
+
+  <!-- ================= CLIENT ================= -->
+  <rect x="20" y="120" width="340" height="130" rx="12" fill="#eef4ff" stroke="#3b6fd8" stroke-width="2" filter="url(#sh)"/>
+  <text x="38" y="150" class="h">Even Realities G2 glasses</text>
+  <text x="38" y="176" class="t">HUD: question, timer, Mocky's tips</text>
+  <text x="38" y="198" class="t">Mic: 16 kHz PCM for the whole interview</text>
+  <text x="38" y="220" class="t">Head tilt (IMU) and taps: navigation</text>
+
+  <path d="M190,254 V296" class="flow" marker-start="url(#a-flow)" marker-end="url(#a-flow)"/>
+  <text x="204" y="280" class="lbl">Even Hub SDK bridge</text>
+
+  <rect x="20" y="300" width="340" height="1000" rx="12" fill="#eef4ff" stroke="#3b6fd8" stroke-width="2" filter="url(#sh)"/>
+  <text x="38" y="332" class="h">MockU app</text>
+  <text x="38" y="356" class="t">React 19 + Vite, runs in the Even App</text>
+  <text x="38" y="375" class="t">WebView on the phone</text>
+  <line x1="38" y1="392" x2="342" y2="392" stroke="#c9d8f5"/>
+
+  <text x="38" y="418" class="sub">Setup screens</text>
+  <text x="38" y="440" class="t">Profile, company picker, resume upload</text>
+  <text x="38" y="460" class="t">Briefing: 5 min to prepare</text>
+  <text x="38" y="496" class="sub">Live screen</text>
+  <text x="38" y="518" class="t">Shows each question on the HUD and</text>
+  <text x="38" y="538" class="t">sends its asked_at_ms when it appears</text>
+  <text x="38" y="574" class="code">api/live.ts</text>
+  <text x="38" y="594" class="t">WebSocket client: answers ping, acks</text>
+  <text x="38" y="614" class="t">tips, shows them on the HUD for 6 s</text>
+
+  <text x="38" y="716" class="code">glasses/recorder.ts</text>
+  <text x="38" y="736" class="t">Records the whole interview as ONE</text>
+  <text x="38" y="756" class="t">16-bit WAV, padded with silence so</text>
+  <text x="38" y="776" class="t">audio t = 0 is the session's started_at.</text>
+  <text x="38" y="800" class="t">On finish: POST /end, then upload</text>
+  <text x="38" y="820" class="t">the WAV (multipart)</text>
+  <text x="38" y="870" class="code">api/client.ts</text>
+  <text x="38" y="890" class="t">fetch wrapper for every REST call</text>
+  <text x="38" y="926" class="code">glasses/bridge.ts</text>
+  <text x="38" y="946" class="t">Draws text and the Mocky bitmap on</text>
+  <text x="38" y="966" class="t">the HUD through the Even Hub SDK</text>
+  <text x="38" y="1002" class="code">glasses/tilt.ts · glasses/input.ts</text>
+  <text x="38" y="1022" class="t">Head tilt (IMU) and taps move between</text>
+  <text x="38" y="1042" class="t">questions and screens hands-free</text>
+
+  <text x="38" y="1122" class="sub">Results screens</text>
+  <text x="38" y="1146" class="code">useSessionReport</text>
+  <text x="38" y="1168" class="t">Polls GET /sessions/{id} until done,</text>
+  <text x="38" y="1188" class="t">then loads report, transcript and</text>
+  <text x="38" y="1208" class="t">heart-rate series</text>
+  <text x="38" y="1232" class="t">Results, Moment (jumps to a finding's</text>
+  <text x="38" y="1252" class="t">time) and History</text>
+  <text x="38" y="1284" class="m">No VITE_API_URL → in-browser mock server</text>
+
+  <!-- ================= PULSOID ================= -->
+  <rect x="820" y="120" width="330" height="120" rx="12" fill="#fff7ec" stroke="#d9822b" stroke-width="2" filter="url(#sh)"/>
+  <text x="838" y="148" class="h">Apple Watch → Pulsoid</text>
+  <text x="838" y="172" class="t">Live heart rate (PULSOID_ENABLED)</text>
+  <text x="838" y="198" class="m">No watch: scripts/simulate_bpm.py</text>
+  <text x="838" y="217" class="m">posts samples to …/biometrics</text>
+
+  <path d="M985,240 V316" class="net" marker-end="url(#a-net)"/>
+  <g class="badge b-live" transform="translate(985,262)"><circle r="12"/><text>3</text></g>
+  <text x="1004" y="266" class="lbl">wss feed (backend connects out)</text>
+
+  <!-- ================= BACKEND ================= -->
+  <rect x="460" y="280" width="710" height="1030" rx="18" fill="#eef8f7" stroke="#1f8a8a" stroke-width="2"/>
+  <text x="480" y="306" class="grp" fill="#1f8a8a">Backend · FastAPI on uvicorn :8000 (Backend/src)</text>
+
+  <!-- Setup -->
+  <rect x="480" y="320" width="320" height="320" rx="12" class="card" filter="url(#sh)"/>
+  <rect x="480" y="320" width="6" height="320" rx="3" fill="#3b6fd8"/>
+  <text x="500" y="348" class="h">Setup &amp; sessions</text>
+  <text x="500" y="370" class="ep">POST /profiles · /resumes · /sessions</text>
+  <text x="500" y="388" class="ep">GET /companies · PATCH …/questions/{n}</text>
+  <text x="500" y="416" class="code">resume_service + utils/pdf.py</text>
+  <text x="500" y="436" class="t">PDF ≤ 5 MB → bucket resumes/; pypdf</text>
+  <text x="500" y="454" class="t">+ cleanup → resumes.raw_text (once)</text>
+  <text x="500" y="482" class="code">session_service</text>
+  <text x="500" y="502" class="t">Picks N random questions for the</text>
+  <text x="500" y="520" class="t">company; saves asked_at_ms when the</text>
+  <text x="500" y="538" class="t">app says a question was shown</text>
+  <text x="500" y="566" class="code">profile_service · company_service</text>
+  <text x="500" y="594" class="m">Status: recording → processing →</text>
+  <text x="500" y="612" class="m">done | failed</text>
+
+  <!-- Live -->
+  <rect x="820" y="320" width="330" height="320" rx="12" class="card" filter="url(#sh)"/>
+  <rect x="820" y="320" width="6" height="320" rx="3" fill="#d0435b"/>
+  <text x="840" y="348" class="h">Live mode (in memory)</text>
+  <text x="840" y="370" class="ep">WS /ws/sessions/{id}/glasses</text>
+  <text x="840" y="388" class="ep">POST /sessions/{id}/biometrics</text>
+  <text x="840" y="416" class="code">pulsoid_service</text>
+  <text x="840" y="434" class="t">Outbound wss to Pulsoid → bpm</text>
+  <text x="840" y="460" class="code">live_manager</text>
+  <text x="840" y="478" class="t">Per session: stale check every 1 s,</text>
+  <text x="840" y="496" class="t">flush samples every 5 s, ping 20 s</text>
+  <text x="840" y="522" class="code">spike_detector</text>
+  <text x="840" y="540" class="t">Baseline: median of the first 15 s.</text>
+  <text x="840" y="558" class="t">All bpm ≥ baseline+15 for 8 s → tip</text>
+  <text x="840" y="576" class="t">(+30 = high). 45 s cooldown, max 6.</text>
+  <text x="840" y="604" class="ret">→ live_suggestions + WS suggestion</text>
+  <text x="840" y="622" class="ret">→ biometric_samples (batched)</text>
+
+  <!-- Post-interview -->
+  <rect x="480" y="680" width="670" height="380" rx="12" class="card" filter="url(#sh)"/>
+  <rect x="480" y="680" width="6" height="380" rx="3" fill="#6a4fd8"/>
+  <text x="500" y="708" class="h">Post-interview analysis (FastAPI BackgroundTasks)</text>
+  <text x="500" y="730" class="ep">POST …/end · POST …/audio → 202 Accepted · POST …/reprocess → 202</text>
+  <text x="500" y="758" class="code">audio_service.upload_audio_and_start_processing</text>
+  <text x="500" y="778" class="t">WAV ≤ 100 MB → bucket audio/ + audio_recordings row, status = processing,</text>
+  <text x="500" y="796" class="t">then queues run_post_interview_pipeline as a background task</text>
+  <text x="500" y="824" class="code">analysis_service.analyze_session  builds AnalyzeInterviewRequest:</text>
+  <text x="516" y="846" class="sch">audio_url          signed URL to the WAV in Storage, valid 1 h</text>
+  <text x="516" y="864" class="sch">questions[]        position, text, asked_at_ms</text>
+  <text x="516" y="882" class="sch">resume_text        resumes.raw_text (extracted at upload)</text>
+  <text x="516" y="900" class="sch">job_description    role + company industry, culture and values</text>
+  <text x="516" y="918" class="sch">heart_rate_events  live_suggestions rows (manual tests excluded)</text>
+  <text x="500" y="944" class="t">httpx POST {AI_SERVICE_URL}/analyze/interview  (timeout AI_SERVICE_TIMEOUT_S = 600 s)</text>
+  <text x="500" y="972" class="code">_save_results</text>
+  <text x="500" y="992" class="t">Replaces transcript_segments, reports (overall_score + summary_json) and report_findings:</text>
+  <text x="500" y="1010" class="t">AI findings + one "biometric" finding per heart-rate tip (spike window t − 8 s → t)</text>
+  <text x="500" y="1040" class="ret">→ status = done    (any error or non-200 → failed; POST …/reprocess re-runs it)</text>
+
+  <!-- Results -->
+  <rect x="480" y="1090" width="670" height="200" rx="12" class="card" filter="url(#sh)"/>
+  <rect x="480" y="1090" width="6" height="200" rx="3" fill="#1f2433"/>
+  <text x="500" y="1118" class="h">Results (read side)</text>
+  <text x="500" y="1140" class="ep">GET /sessions/{id} · …/report · …/transcript · …/biometrics · …/suggestions</text>
+  <text x="500" y="1158" class="ep">GET /sessions?profile_id=   (history)</text>
+  <text x="500" y="1186" class="code">report_service</text>
+  <text x="700" y="1186" class="t">reports + report_findings, ordered by start_ms</text>
+  <text x="500" y="1208" class="code">transcript_service</text>
+  <text x="700" y="1208" class="t">transcript_segments, ordered by start_ms</text>
+  <text x="500" y="1230" class="code">biometric_service</text>
+  <text x="700" y="1230" class="t">samples bucketed to ≤ 300 points + min / max / avg / baseline</text>
+  <text x="500" y="1252" class="code">session_service</text>
+  <text x="700" y="1252" class="t">status, has_audio, report_ready; history with overall_score</text>
+  <text x="500" y="1278" class="m">Every error uses one shape: { "error": { "code", "message" } }</text>
+
+  <!-- app <-> backend -->
+  <path d="M360,400 H476" class="flow" marker-end="url(#a-flow)"/>
+  <g class="badge b-setup" transform="translate(410,400)"><circle r="12"/><text>1</text></g>
+  <text x="366" y="380" class="lbl">REST /api/v1</text>
+
+  <path d="M360,560 H476" class="flow" marker-end="url(#a-flow)"/>
+  <g class="badge b-live" transform="translate(410,560)"><circle r="12"/><text>2</text></g>
+  <text x="366" y="530" class="lbl">PATCH</text>
+  <text x="366" y="545" class="lbl">asked_at_ms</text>
+
+  <path d="M900,640 V660 H364" class="flow" marker-end="url(#a-flow)"/>
+  <g class="badge b-live" transform="translate(410,660)"><circle r="12"/><text>4</text></g>
+  <text x="366" y="690" class="lbl">WS push:</text>
+  <text x="366" y="706" class="lbl">tips, bpm</text>
+
+  <path d="M360,800 H476" class="flow" marker-end="url(#a-flow)"/>
+  <g class="badge b-ai" transform="translate(410,800)"><circle r="12"/><text>5</text></g>
+  <text x="366" y="770" class="lbl">POST /end</text>
+  <text x="366" y="786" class="lbl">+ WAV upload</text>
+
+  <path d="M360,1160 H476" class="flow" marker-end="url(#a-flow)"/>
+  <g class="badge b-res" transform="translate(410,1160)"><circle r="12"/><text>12</text></g>
+  <text x="366" y="1140" class="lbl">poll + GET</text>
+  <path d="M480,1230 H364" class="flow" marker-end="url(#a-flow)"/>
+  <text x="380" y="1254" class="lbl">JSON</text>
+
+  <!-- ================= AI SERVICE ================= -->
+  <rect x="1320" y="120" width="740" height="1190" rx="18" fill="#f4f1ff" stroke="#6a4fd8" stroke-width="2"/>
+  <text x="1340" y="146" class="grp" fill="#6a4fd8">ai-service · FastAPI on uvicorn :8001 (ai-service/app)</text>
+
+  <!-- backend <-> ai-service -->
+  <path d="M1150,790 H1336" class="call" marker-end="url(#a-dark)"/>
+  <g class="badge b-ai" transform="translate(1250,790)"><circle r="12"/><text>6</text></g>
+  <text x="1180" y="756" class="lbl">POST</text>
+  <text x="1180" y="772" class="lbl">/analyze/interview</text>
+  <text x="1180" y="816" class="lbl">timeout 600 s</text>
+
+  <path d="M1340,950 H1154" class="call" marker-end="url(#a-dark)"/>
+  <g class="badge b-ai" transform="translate(1250,950)"><circle r="12"/><text>11</text></g>
+  <text x="1180" y="914" class="lbl">AnalyzeInterview</text>
+  <text x="1180" y="930" class="lbl">Response</text>
+  <text x="1180" y="976" class="lbl">or HTTP 500</text>
+
+  <!-- main.py -->
+  <rect x="1340" y="165" width="260" height="845" rx="12" fill="#ffffff" stroke="#6a4fd8" stroke-width="2.5" filter="url(#sh)"/>
+  <text x="1360" y="195" class="codeb">app/main.py</text>
+  <text x="1360" y="217" class="t">FastAPI orchestrator</text>
+  <line x1="1360" y1="233" x2="1580" y2="233" stroke="#e3e0f3"/>
+  <text x="1360" y="255" class="m">Endpoints</text>
+  <text x="1360" y="277" class="code">POST /analyze/interview</text>
+  <text x="1360" y="295" class="m">the call the backend makes</text>
+  <text x="1360" y="321" class="code">POST /analyze/session</text>
+  <text x="1360" y="339" class="m">legacy: one answer + PDF URL,</text>
+  <text x="1360" y="357" class="m">no longer called by the backend</text>
+  <text x="1360" y="383" class="code">GET  /health</text>
+  <line x1="1360" y1="403" x2="1580" y2="403" stroke="#e3e0f3"/>
+  <text x="1360" y="425" class="m">/analyze/interview, per request</text>
+  <text x="1360" y="447" class="t">• Runs steps 7 → 10 in order,</text>
+  <text x="1372" y="466" class="t">passing each output on</text>
+  <text x="1360" y="488" class="t">• Splits answers by asked_at_ms</text>
+  <text x="1360" y="510" class="t">• Merges AI + delivery findings,</text>
+  <text x="1372" y="529" class="t">sorted by start_ms</text>
+  <text x="1360" y="551" class="t">• Logs each step + elapsed time</text>
+  <text x="1360" y="573" class="t">• Any exception → HTTP 500</text>
+  <line x1="1360" y1="595" x2="1580" y2="595" stroke="#e3e0f3"/>
+  <text x="1360" y="617" class="m">Config (.env)</text>
+  <text x="1360" y="639" class="code">ASSEMBLYAI_API_KEY</text>
+  <text x="1360" y="659" class="code">GEMINI_API_KEY</text>
+  <text x="1360" y="679" class="code">ENVIRONMENT</text>
+  <line x1="1360" y1="701" x2="1580" y2="701" stroke="#e3e0f3"/>
+  <text x="1360" y="723" class="m">Execution</text>
+  <text x="1360" y="745" class="t">Synchronous: one request runs</text>
+  <text x="1360" y="764" class="t">every step before replying</text>
+  <text x="1360" y="783" class="t">(minutes for a full interview)</text>
+  <text x="1360" y="813" class="t">Stateless: never touches the</text>
+  <text x="1360" y="832" class="t">database. The backend stores</text>
+  <text x="1360" y="851" class="t">what it returns.</text>
+
+  <!-- Step: resume text -->
+  <path d="M1600,215 H1636" class="call" marker-end="url(#a-dark)"/>
+  <rect x="1640" y="165" width="400" height="100" rx="12" class="card" filter="url(#sh)"/>
+  <rect x="1640" y="165" width="6" height="100" rx="3" fill="#3b6fd8"/>
+  <text x="1660" y="190" class="codeb">Resume text</text>
+  <text x="1660" y="212" class="t">Uses request.resume_text, extracted by the backend</text>
+  <text x="1660" y="231" class="t">at upload. Only if it is empty:</text>
+  <text x="1660" y="253" class="code">utils.extract_text_from_pdf(resume_pdf_url)</text>
+
+  <!-- Step 7: transcription -->
+  <path d="M1600,347 H1636" class="call" marker-end="url(#a-dark)"/>
+  <g class="badge b-ai" transform="translate(1620,347)"><circle r="12"/><text>7</text></g>
+  <rect x="1640" y="285" width="400" height="125" rx="12" class="card" filter="url(#sh)"/>
+  <rect x="1640" y="285" width="6" height="125" rx="3" fill="#8a4fd8"/>
+  <text x="1660" y="310" class="codeb">services/transcription.py</text>
+  <text x="1660" y="332" class="code">transcribe_audio(audio_url)</text>
+  <text x="1660" y="354" class="t">One call for the whole interview. AssemblyAI</text>
+  <text x="1660" y="373" class="t">downloads the WAV itself from the signed URL.</text>
+  <text x="1660" y="398" class="ret">→ full_text, words[{text, start, end}] in ms</text>
+
+  <!-- Step 8: metrics + moments -->
+  <path d="M1600,520 H1636" class="call" marker-end="url(#a-dark)"/>
+  <g class="badge b-ai" transform="translate(1620,520)"><circle r="12"/><text>8</text></g>
+  <rect x="1640" y="430" width="400" height="235" rx="12" class="card" filter="url(#sh)"/>
+  <rect x="1640" y="430" width="6" height="235" rx="3" fill="#2f9a6a"/>
+  <text x="1660" y="455" class="codeb">services/metrics.py + services/moments.py</text>
+  <text x="1660" y="477" class="t">Pure Python on the word timestamps, no network</text>
+  <text x="1660" y="501" class="code">calculate_metrics(words)   WPM, fillers,</text>
+  <text x="1660" y="519" class="code">                           pauses, repetitions</text>
+  <text x="1660" y="541" class="code">timed_findings(words)      pauses &gt; 2 s, filler</text>
+  <text x="1660" y="559" class="code">                           clusters, repeats</text>
+  <text x="1660" y="581" class="code">build_segments(words)      transcript lines</text>
+  <text x="1660" y="603" class="code">answer_windows(questions, words)</text>
+  <text x="1660" y="625" class="t">Answer n = words from question n's asked_at_ms</text>
+  <text x="1660" y="644" class="t">to question n+1's; metrics again per answer</text>
+
+  <!-- Step 9: per-answer feedback -->
+  <path d="M1600,750 H1636" class="call" marker-end="url(#a-dark)"/>
+  <g class="badge b-ai" transform="translate(1620,750)"><circle r="12"/><text>9</text></g>
+  <rect x="1640" y="685" width="400" height="145" rx="12" class="card" filter="url(#sh)"/>
+  <rect x="1640" y="685" width="6" height="145" rx="3" fill="#d9822b"/>
+  <text x="1660" y="710" class="codeb">services/evaluations.py</text>
+  <text x="1660" y="732" class="code">evaluate_response(question, answer, resume, jd)</text>
+  <text x="1660" y="754" class="t">One Gemini call per answered question</text>
+  <text x="1660" y="776" class="ret">→ [{criterion, observation, improvement}]</text>
+  <text x="1660" y="798" class="t">Each item becomes a finding over that answer's</text>
+  <text x="1660" y="817" class="t">time range (system_error items are dropped)</text>
+
+  <!-- Step 10: summary -->
+  <path d="M1600,925 H1636" class="call" marker-end="url(#a-dark)"/>
+  <g class="badge b-ai" transform="translate(1620,925)"><circle r="12"/><text>10</text></g>
+  <rect x="1640" y="850" width="400" height="160" rx="12" class="card" filter="url(#sh)"/>
+  <rect x="1640" y="850" width="6" height="160" rx="3" fill="#d9822b"/>
+  <text x="1660" y="875" class="codeb">services/evaluations.py</text>
+  <text x="1660" y="897" class="code">summarize_interview(answers, metrics, …)</text>
+  <text x="1660" y="919" class="t">One Gemini call over all answers, per-answer and</text>
+  <text x="1660" y="938" class="t">whole-interview metrics, heart-rate spikes,</text>
+  <text x="1660" y="957" class="t">resume and job description</text>
+  <text x="1660" y="979" class="ret">→ overall, communication, technical_depth, composure</text>
+  <text x="1660" y="997" class="ret">  scores 0–100, overview, strengths, areas to grow</text>
+
+  <!-- schemas.py -->
+  <rect x="1340" y="1035" width="700" height="255" rx="12" class="card" filter="url(#sh)"/>
+  <text x="1360" y="1062" class="codeb">app/schemas.py</text>
+  <text x="1498" y="1062" class="m">Pydantic contracts between the backend and the AI service</text>
+  <text x="1360" y="1088" class="sch">AnalyzeInterviewRequest  { session_id, audio_url, questions: InterviewQuestion[], resume_text,</text>
+  <text x="1360" y="1107" class="sch">                           resume_pdf_url?, job_description, language, heart_rate_events[] }</text>
+  <text x="1360" y="1126" class="sch">InterviewQuestion        { position, text, asked_at_ms? }</text>
+  <text x="1360" y="1145" class="sch">HeartRateEvent           { t_ms, bpm_at_trigger?, baseline_bpm?, text? }</text>
+  <text x="1360" y="1170" class="sch">AnalyzeInterviewResponse { session_id, transcript_text, segments[], metrics: MetricsResult,</text>
+  <text x="1360" y="1189" class="sch">                           findings: TimedFinding[], summary: InterviewSummaryOut }</text>
+  <text x="1360" y="1208" class="sch">TimedFinding             { category, start_ms, end_ms, severity, title, details }</text>
+  <text x="1360" y="1227" class="sch">MetricsResult            { duration_seconds, speech_rate_wpm, filler_count, … }</text>
+  <text x="1360" y="1246" class="sch">InterviewSummaryOut      { overall_score, communication_score, technical_depth_score,</text>
+  <text x="1360" y="1265" class="sch">                           composure_score, overview, key_strengths[], areas_for_growth[] }</text>
+
+  <!-- ================= EXTERNAL ================= -->
+  <text x="2150" y="146" class="grp" fill="#c06a14">Third-party APIs</text>
+
+  <rect x="2150" y="285" width="220" height="125" rx="12" fill="#fff7ec" stroke="#d9822b" stroke-width="2" filter="url(#sh)"/>
+  <text x="2168" y="314" class="h">AssemblyAI</text>
+  <text x="2168" y="338" class="t">Speech-to-text with word</text>
+  <text x="2168" y="357" class="t">timestamps in ms</text>
+  <text x="2168" y="388" class="m">Downloads the audio itself</text>
+
+  <rect x="2150" y="685" width="220" height="325" rx="12" fill="#fff7ec" stroke="#d9822b" stroke-width="2" filter="url(#sh)"/>
+  <text x="2168" y="714" class="h">Google Gemini</text>
+  <text x="2168" y="738" class="code">gemini-3.8-flash</text>
+  <text x="2168" y="764" class="t">JSON output forced by</text>
+  <text x="2168" y="783" class="t">response_schema</text>
+  <text x="2168" y="815" class="m">Called once per answered</text>
+  <text x="2168" y="834" class="m">question, then once for</text>
+  <text x="2168" y="853" class="m">the interview summary</text>
+
+  <path d="M2040,347 H2146" class="net" marker-end="url(#a-net)"/>
+  <text x="2105" y="339" class="lbl" text-anchor="middle">transcribe()</text>
+  <path d="M2040,750 H2146" class="net" marker-end="url(#a-net)"/>
+  <text x="2105" y="742" class="lbl" text-anchor="middle">feedback</text>
+  <path d="M2040,925 H2146" class="net" marker-end="url(#a-net)"/>
+  <text x="2105" y="917" class="lbl" text-anchor="middle">scores</text>
+
+  <!-- AssemblyAI fetches the WAV from Storage -->
+  <path d="M2370,347 H2398 V1440 H2374" class="net" marker-end="url(#a-net)"/>
+  <g class="badge b-ai" transform="translate(2398,1130)"><circle r="12"/><text>7</text></g>
+  <text x="2380" y="1060" class="lbl" text-anchor="end">AssemblyAI fetches</text>
+  <text x="2380" y="1076" class="lbl" text-anchor="end">the WAV through</text>
+  <text x="2380" y="1092" class="lbl" text-anchor="end">the signed URL</text>
+
+  <!-- ================= SUPABASE ================= -->
+  <rect x="460" y="1350" width="1950" height="245" rx="18" fill="#effaf3" stroke="#2f9a6a" stroke-width="2"/>
+  <text x="480" y="1376" class="grp" fill="#2f9a6a">Supabase · Postgres + Storage</text>
+
+  <rect x="480" y="1390" width="1160" height="190" rx="12" class="card"/>
+  <text x="500" y="1416" class="h">Postgres tables</text>
+  <text x="500" y="1442" class="sub">Setup</text>
+  <text x="500" y="1462" class="code">profiles · companies · questions</text>
+  <text x="500" y="1481" class="code">resumes             (raw_text)</text>
+  <text x="500" y="1500" class="code">interview_sessions  (status, started_at)</text>
+  <text x="500" y="1519" class="code">session_questions   (asked_at_ms)</text>
+  <text x="880" y="1442" class="sub">Live mode</text>
+  <text x="880" y="1462" class="code">biometric_samples  (t_ms, bpm)</text>
+  <text x="880" y="1481" class="code">live_suggestions   (t_ms, text,</text>
+  <text x="880" y="1500" class="code">                    bpm_at_trigger,</text>
+  <text x="880" y="1519" class="code">                    baseline_bpm)</text>
+  <text x="1240" y="1442" class="sub">Analysis results</text>
+  <text x="1240" y="1462" class="code">audio_recordings     (storage_path)</text>
+  <text x="1240" y="1481" class="code">transcript_segments  (start_ms, end_ms)</text>
+  <text x="1240" y="1500" class="code">reports              (overall_score,</text>
+  <text x="1240" y="1519" class="code">                      summary_json)</text>
+  <text x="1240" y="1538" class="code">report_findings      (report_id, *_ms)</text>
+  <text x="500" y="1564" class="m">Only the backend reads and writes these tables.</text>
+
+  <rect x="1660" y="1390" width="710" height="190" rx="12" class="card"/>
+  <text x="1680" y="1416" class="h">Storage buckets</text>
+  <text x="1680" y="1444" class="code">resumes/   original PDF uploads</text>
+  <text x="1680" y="1464" class="code">audio/     one WAV per interview session</text>
+  <text x="1680" y="1494" class="t">The backend uploads both files and creates a 1-hour signed URL</text>
+  <text x="1680" y="1513" class="t">for the WAV. AssemblyAI downloads it directly, so the audio never</text>
+  <text x="1680" y="1532" class="t">passes through the AI service.</text>
+  <text x="1680" y="1562" class="m">The AI service reads a resume PDF URL only in its legacy fallback.</text>
+
+  <!-- backend <-> Supabase -->
+  <path d="M800,1314 V1386" class="db" marker-start="url(#a-db)" marker-end="url(#a-db)"/>
+  <text x="812" y="1338" class="lbl">supabase-py: rows</text>
+  <path d="M1100,1310 V1330 H1760 V1386" class="db" marker-end="url(#a-db)"/>
+  <text x="1180" y="1325" class="lbl">upload PDF / WAV, create signed URL</text>
+
+  <!-- ================= TIME CONTRACT ================= -->
+  <rect x="20" y="1350" width="420" height="245" rx="12" fill="#fffbea" stroke="#c9a227" stroke-width="2"/>
+  <text x="38" y="1378" class="h">One clock for everything</text>
+  <text x="38" y="1402" class="t">Every *_ms value is milliseconds since the</text>
+  <text x="38" y="1421" class="t">session's started_at (t = 0):</text>
+  <text x="38" y="1445" class="t">• recorder.ts pads the WAV, so audio t = 0</text>
+  <text x="38" y="1464" class="t">• asked_at_ms marks where each answer starts</text>
+  <text x="38" y="1483" class="t">• AssemblyAI word times become finding times</text>
+  <text x="38" y="1502" class="t">• heart-rate samples and tips use t_ms</text>
+  <text x="38" y="1530" class="t">That is why findings, transcript lines and</text>
+  <text x="38" y="1549" class="t">the heart-rate chart line up on the Results</text>
+  <text x="38" y="1568" class="t">and Moment screens.</text>
+
+  <!-- ================= LEGEND ================= -->
+  <g transform="translate(24,1636)">
+    <path d="M0,0 H40" class="flow" marker-end="url(#a-flow)"/>
+    <text x="52" y="5" class="m">App ↔ backend traffic</text>
+    <path d="M230,0 H270" class="call" marker-end="url(#a-dark)"/>
+    <text x="282" y="5" class="m">Call between our services</text>
+    <path d="M480,0 H520" class="net" marker-end="url(#a-net)"/>
+    <text x="532" y="5" class="m">Third-party network call</text>
+    <path d="M730,0 H770" class="db" marker-end="url(#a-db)"/>
+    <text x="782" y="5" class="m">Supabase read / write</text>
+  </g>
+
+  <!-- Flow key -->
+  <g class="badge b-setup" transform="translate(32,1680)"><circle r="8"/></g>
+  <text x="48" y="1685" class="sub">Setup</text>
+  <text x="24" y="1708" class="key"><tspan font-weight="700" fill="#3b6fd8">1 </tspan> Profile, company, resume upload (text</text>
+  <text x="24" y="1728" class="key">   extracted once), start session</text>
+
+  <g class="badge b-live" transform="translate(478,1680)"><circle r="8"/></g>
+  <text x="494" y="1685" class="sub">Live interview</text>
+  <text x="470" y="1708" class="key"><tspan font-weight="700" fill="#d0435b">2 </tspan> Question shown on the HUD → PATCH asked_at_ms</text>
+  <text x="470" y="1728" class="key"><tspan font-weight="700" fill="#d0435b">3 </tspan> Watch bpm → Pulsoid → spike detector</text>
+  <text x="470" y="1748" class="key"><tspan font-weight="700" fill="#d0435b">4 </tspan> Sustained spike → tip over WS → HUD for 6 s</text>
+
+  <g class="badge b-ai" transform="translate(1018,1680)"><circle r="8"/></g>
+  <text x="1034" y="1685" class="sub">Post-interview analysis</text>
+  <text x="1010" y="1708" class="key"><tspan font-weight="700" fill="#6a4fd8">5 </tspan> End, upload WAV → status processing</text>
+  <text x="1010" y="1728" class="key"><tspan font-weight="700" fill="#6a4fd8">6 </tspan> Backend → POST /analyze/interview</text>
+  <text x="1010" y="1748" class="key"><tspan font-weight="700" fill="#6a4fd8">7 </tspan> AssemblyAI transcribes from the signed URL</text>
+  <text x="1010" y="1768" class="key"><tspan font-weight="700" fill="#6a4fd8">8 </tspan> Metrics, timed findings, answer windows</text>
+  <text x="1440" y="1708" class="key"><tspan font-weight="700" fill="#6a4fd8">9 </tspan> Gemini feedback per answer → findings</text>
+  <text x="1440" y="1728" class="key"><tspan font-weight="700" fill="#6a4fd8">10</tspan> Gemini scores + summary</text>
+  <text x="1440" y="1748" class="key"><tspan font-weight="700" fill="#6a4fd8">11</tspan> Results saved → status done (or failed)</text>
+
+  <g class="badge b-res" transform="translate(1938,1680)"><circle r="8"/></g>
+  <text x="1954" y="1685" class="sub">Results</text>
+  <text x="1930" y="1708" class="key"><tspan font-weight="700" fill="#1f2433">12</tspan> App polls until done, then shows</text>
+  <text x="1930" y="1728" class="key">   report, transcript and heart-rate chart</text>
+</svg>
+</body>
+</html>
