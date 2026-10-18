@@ -13,6 +13,8 @@ from src.services.company_service import get_company_by_id
 from src.services.profile_service import get_profile_by_id
 from src.services.resume_service import get_resume_by_id
 
+AUDIO_BUCKET = "audio"
+
 
 def create_session(
     profile_id: str,
@@ -26,8 +28,9 @@ def create_session(
     get_company_by_id(company_id)
     resume = get_resume_by_id(resume_id)
 
-    # Verify resume belongs to that profile
-    if str(resume.get("user_id")) != str(profile_id):
+    # Verify resume belongs to that profile (check profile_id or user_id)
+    resume_owner = resume.get("profile_id") or resume.get("user_id")
+    if resume_owner and str(resume_owner) != str(profile_id):
         raise UnprocessableEntityException(
             message=f"Resume '{resume_id}' does not belong to profile '{profile_id}'.",
             code="RESUME_PROFILE_MISMATCH",
@@ -37,9 +40,8 @@ def create_session(
     session_id = str(uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
 
-    session_record = {
+    base_record = {
         "id": session_id,
-        "user_id": str(profile_id),
         "company_id": str(company_id),
         "resume_id": str(resume_id),
         "role_title": role_title or "SWE Intern",
@@ -48,8 +50,20 @@ def create_session(
         "ended_at": None,
     }
 
-    # Insert session
-    res = supabase.table("interview_sessions").insert(session_record).execute()
+    # Attempt insert with profile_id, fallback to user_id for schema compatibility
+    try:
+        res = (
+            supabase.table("interview_sessions")
+            .insert({**base_record, "profile_id": str(profile_id)})
+            .execute()
+        )
+    except Exception:
+        res = (
+            supabase.table("interview_sessions")
+            .insert({**base_record, "user_id": str(profile_id)})
+            .execute()
+        )
+
     if not res.data:
         raise RuntimeError("Failed to create interview session.")
 
@@ -57,8 +71,6 @@ def create_session(
 
     # 3. Pick question_count random questions from question bank
     try:
-        # Fetch generic questions and company-specific questions
-        # First try fetching company specific or generic
         q_res = (
             supabase.table("questions")
             .select("id, text, category, company_id")
@@ -66,7 +78,6 @@ def create_session(
         )
         all_questions = q_res.data or []
 
-        # Filter relevant questions (generic or specific to this company)
         eligible = [
             q
             for q in all_questions
@@ -116,7 +127,7 @@ def create_session(
                 raise RuntimeError("Failed to link questions to interview session.")
 
     except Exception as e:
-        # 5. Clean up session if question linking fails
+        # Clean up session if question linking fails
         try:
             supabase.table("interview_sessions").delete().eq("id", session_id).execute()
         except Exception:
@@ -263,7 +274,6 @@ def record_question_shown(
     current_val = current_item.get("asked_at_ms")
     if current_val is not None:
         if current_val == asked_at_ms:
-            # Idempotent retry
             return {"position": position, "asked_at_ms": asked_at_ms}
         else:
             raise ConflictException(
@@ -341,3 +351,199 @@ def end_session(session_id: str) -> Dict[str, Any]:
         "ended_at": now_iso,
         "duration_ms": max(0, duration_ms),
     }
+
+
+def list_sessions(
+    profile_id: str,
+    status: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """
+    List candidate interview sessions history.
+    Includes company name and report overall_score.
+    """
+    # 1. Verify profile exists
+    get_profile_by_id(profile_id)
+
+    # 2. Query sessions for profile
+    limit = min(max(1, limit), 50)
+    offset = max(0, offset)
+
+    # Try profile_id first, fallback to user_id
+    query = (
+        supabase.table("interview_sessions")
+        .select("id, role_title, status, started_at, ended_at, company_id, companies(id, name), reports(overall_score)", count="exact")
+        .eq("profile_id", str(profile_id))
+    )
+    if status:
+        query = query.eq("status", status)
+
+    res = query.order("started_at", desc=True).range(offset, offset + limit - 1).execute()
+
+    if not res.data and res.count == 0:
+        # Fallback query using user_id column
+        fallback_query = (
+            supabase.table("interview_sessions")
+            .select("id, role_title, status, started_at, ended_at, company_id, companies(id, name), reports(overall_score)", count="exact")
+            .eq("user_id", str(profile_id))
+        )
+        if status:
+            fallback_query = fallback_query.eq("status", status)
+        res = fallback_query.order("started_at", desc=True).range(offset, offset + limit - 1).execute()
+
+    rows = res.data or []
+    total_count = res.count if res.count is not None else len(rows)
+
+    items = []
+    for r in rows:
+        started_at = datetime.fromisoformat(r["started_at"].replace("Z", "+00:00"))
+        duration_ms = None
+        if r.get("ended_at"):
+            ended_at = datetime.fromisoformat(r["ended_at"].replace("Z", "+00:00"))
+            duration_ms = max(0, int((ended_at - started_at).total_seconds() * 1000))
+
+        company_data = r.get("companies") or {}
+        company_obj = {
+            "id": r.get("company_id") or company_data.get("id"),
+            "name": company_data.get("name", "Mock Company"),
+        }
+
+        # reports relation can be a list or a dict
+        report_data = r.get("reports")
+        overall_score = None
+        if isinstance(report_data, list) and len(report_data) > 0:
+            overall_score = report_data[0].get("overall_score")
+        elif isinstance(report_data, dict):
+            overall_score = report_data.get("overall_score")
+
+        items.append(
+            {
+                "id": r["id"],
+                "company": company_obj,
+                "role_title": r.get("role_title"),
+                "status": r["status"],
+                "started_at": r["started_at"],
+                "ended_at": r.get("ended_at"),
+                "duration_ms": duration_ms,
+                "overall_score": overall_score,
+            }
+        )
+
+    return {"items": items, "total": total_count}
+
+
+def reprocess_session(session_id: str) -> Dict[str, Any]:
+    """
+    Re-run the analysis for a finished interview (status 'done' or 'failed').
+    Deletes existing report, findings, and transcript_segments before restarting.
+    """
+    # 1. Verify session exists
+    s_res = (
+        supabase.table("interview_sessions")
+        .select("id, status")
+        .eq("id", str(session_id))
+        .execute()
+    )
+    if not s_res.data:
+        raise NotFoundException(
+            message=f"Session with id '{session_id}' not found.",
+            code="SESSION_NOT_FOUND",
+        )
+
+    current_status = s_res.data[0].get("status")
+
+    # 2. Re-process only allowed for 'done' or 'failed'
+    if current_status in ["recording", "processing"]:
+        raise ConflictException(
+            message=f"Cannot reprocess session in '{current_status}' status. Only 'done' or 'failed' sessions can be reprocessed.",
+            code="SESSION_STATUS_CONFLICT",
+        )
+
+    # 3. Verify audio exists
+    a_res = (
+        supabase.table("audio_recordings")
+        .select("id")
+        .eq("session_id", str(session_id))
+        .execute()
+    )
+    if not a_res.data:
+        raise ConflictException(
+            message="Cannot reprocess session without an audio recording.",
+            code="AUDIO_MISSING",
+        )
+
+    # 4. Clear existing reports and transcript segments
+    try:
+        supabase.table("report_findings").delete().eq("session_id", str(session_id)).execute()
+    except Exception:
+        pass
+
+    try:
+        supabase.table("reports").delete().eq("session_id", str(session_id)).execute()
+    except Exception:
+        pass
+
+    try:
+        supabase.table("transcript_segments").delete().eq("session_id", str(session_id)).execute()
+    except Exception:
+        pass
+
+    # 5. Set status to processing
+    supabase.table("interview_sessions").update({"status": "processing"}).eq(
+        "id", str(session_id)
+    ).execute()
+
+    return {"session_id": session_id, "status": "processing"}
+
+
+def delete_session(session_id: str) -> None:
+    """
+    Privacy cleanup: remove session and all related records and audio file.
+    Storage file is deleted first to avoid orphan files.
+    """
+    # 1. Verify session exists
+    s_res = (
+        supabase.table("interview_sessions")
+        .select("id, status")
+        .eq("id", str(session_id))
+        .execute()
+    )
+    if not s_res.data:
+        raise NotFoundException(
+            message=f"Session with id '{session_id}' not found.",
+            code="SESSION_NOT_FOUND",
+        )
+
+    current_status = s_res.data[0].get("status")
+    if current_status == "processing":
+        raise ConflictException(
+            message="Cannot delete session while it is processing.",
+            code="SESSION_PROCESSING_CONFLICT",
+        )
+
+    # 2. Read audio storage path if available
+    a_res = (
+        supabase.table("audio_recordings")
+        .select("storage_path")
+        .eq("session_id", str(session_id))
+        .execute()
+    )
+    audio_path = a_res.data[0].get("storage_path") if a_res.data else None
+
+    # 3. Delete audio from Storage first
+    if audio_path:
+        try:
+            supabase.storage.from_(AUDIO_BUCKET).remove([audio_path])
+        except Exception:
+            pass
+
+    # 4. Delete session row (cascades to related tables)
+    try:
+        supabase.table("interview_sessions").delete().eq("id", str(session_id)).execute()
+    except Exception as e:
+        raise AppException(
+            message=f"Failed to delete session record: {str(e)}",
+            code="DATABASE_DELETE_ERROR",
+            status_code=500,
+        )

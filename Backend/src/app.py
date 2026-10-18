@@ -1,8 +1,10 @@
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
+from src.core.config import supabase
 from src.core.exceptions import (
     AppException,
     app_exception_handler,
@@ -49,10 +51,35 @@ async def generic_exception_handler(request: Request, exc: Exception):
     )
 
 
-# 3. Health check
+# 3. Health check (root path /health)
 @app.get("/health", tags=["Health"])
 def health_check():
-    return {"status": "ok", "service": "MockU Backend"}
+    """
+    Deployment health check confirming backend and database connectivity.
+    Returns 200 with database: ok if reachable.
+    Returns 503 with database: unreachable if degraded.
+    """
+    current_time = datetime.now(timezone.utc).isoformat()
+    try:
+        # Lightweight check against Supabase
+        supabase.table("companies").select("id").limit(1).execute()
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "status": "ok",
+                "database": "ok",
+                "time": current_time,
+            },
+        )
+    except Exception:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "degraded",
+                "database": "unreachable",
+                "time": current_time,
+            },
+        )
 
 
 # 4. Include v1 endpoints (/api/v1)

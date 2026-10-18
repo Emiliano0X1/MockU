@@ -59,3 +59,29 @@ class SessionEndResponse(BaseModel):
     status: str
     ended_at: datetime
     duration_ms: int
+
+
+class SessionCompanyInfo(BaseModel):
+    id: UUID
+    name: str
+
+
+class SessionListItem(BaseModel):
+    id: UUID
+    company: SessionCompanyInfo
+    role_title: Optional[str] = None
+    status: str
+    started_at: datetime
+    ended_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+    overall_score: Optional[int] = None
+
+
+class SessionListResponse(BaseModel):
+    items: List[SessionListItem]
+    total: int
+
+
+class SessionReprocessResponse(BaseModel):
+    session_id: UUID
+    status: Literal["processing"] = "processing"

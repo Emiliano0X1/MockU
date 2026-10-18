@@ -5,11 +5,17 @@ from fastapi import (
     BackgroundTasks,
     File,
     Form,
+    Query,
+    Response,
     UploadFile,
     status,
 )
 from src.models.audio import AudioUploadResponse
-from src.models.biometric import BiometricBatchRequest, BiometricBatchResponse
+from src.models.biometric import (
+    BiometricBatchRequest,
+    BiometricBatchResponse,
+    BiometricSeriesResponse,
+)
 from src.models.report import ReportResponse
 from src.models.session import (
     QuestionShowRequest,
@@ -18,19 +24,27 @@ from src.models.session import (
     SessionCreateResponse,
     SessionDetailResponse,
     SessionEndResponse,
+    SessionListResponse,
+    SessionReprocessResponse,
 )
 from src.models.transcript import TranscriptResponse
 from src.services.audio_service import (
     run_post_interview_pipeline,
     upload_audio_and_start_processing,
 )
-from src.services.biometric_service import ingest_biometrics_batch
+from src.services.biometric_service import (
+    get_biometric_series,
+    ingest_biometrics_batch,
+)
 from src.services.report_service import get_session_report
 from src.services.session_service import (
     create_session,
+    delete_session,
     end_session,
     get_session_by_id,
+    list_sessions,
     record_question_shown,
+    reprocess_session,
 )
 from src.services.transcript_service import get_session_transcript
 
@@ -46,6 +60,22 @@ def handle_create_session(payload: SessionCreate):
         resume_id=str(payload.resume_id),
         role_title=payload.role_title or "SWE Intern",
         question_count=payload.question_count or 6,
+    )
+
+
+@router.get("", response_model=SessionListResponse, status_code=status.HTTP_200_OK)
+def handle_list_sessions(
+    profile_id: UUID = Query(..., description="Candidate profile ID"),
+    status: Optional[str] = Query(None, description="Optional status filter"),
+    limit: int = Query(20, ge=1, le=50, description="Page limit (max 50)"),
+    offset: int = Query(0, ge=0, description="Page offset"),
+):
+    """Retrieve paginated list of candidate interview sessions."""
+    return list_sessions(
+        profile_id=str(profile_id),
+        status=status,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -85,6 +115,26 @@ def handle_ingest_biometrics(id: UUID, payload: BiometricBatchRequest):
     return {"inserted": inserted_count}
 
 
+@router.get(
+    "/{id}/biometrics",
+    response_model=BiometricSeriesResponse,
+    status_code=status.HTTP_200_OK,
+)
+def handle_get_biometrics_series(
+    id: UUID,
+    max_points: int = Query(300, ge=1, le=1000, description="Max points to return for chart"),
+    from_ms: Optional[int] = Query(None, ge=0, description="Window start time in ms"),
+    to_ms: Optional[int] = Query(None, ge=0, description="Window end time in ms"),
+):
+    """Retrieve bucketed biometric data points and metrics for dashboard charts."""
+    return get_biometric_series(
+        session_id=str(id),
+        max_points=max_points,
+        from_ms=from_ms,
+        to_ms=to_ms,
+    )
+
+
 @router.post("/{id}/end", response_model=SessionEndResponse, status_code=status.HTTP_200_OK)
 def handle_end_session(id: UUID):
     """Mark the interview as completed and calculate duration."""
@@ -115,6 +165,31 @@ async def handle_upload_audio(
     background_tasks.add_task(run_post_interview_pipeline, str(id))
 
     return result
+
+
+@router.post(
+    "/{id}/reprocess",
+    response_model=SessionReprocessResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def handle_reprocess_session(
+    id: UUID,
+    background_tasks: BackgroundTasks,
+):
+    """Re-run the analysis for a finished interview session, replacing previous derived results."""
+    result = reprocess_session(str(id))
+    background_tasks.add_task(run_post_interview_pipeline, str(id))
+    return result
+
+
+@router.delete(
+    "/{id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def handle_delete_session(id: UUID):
+    """Delete an interview session and its audio recording from storage."""
+    delete_session(str(id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{id}/report", response_model=ReportResponse, status_code=status.HTTP_200_OK)

@@ -1,4 +1,5 @@
-from typing import List
+from typing import List, Optional
+from uuid import UUID
 from pydantic import BaseModel, Field
 
 
@@ -18,3 +19,23 @@ class BiometricBatchRequest(BaseModel):
 
 class BiometricBatchResponse(BaseModel):
     inserted: int
+
+
+class BiometricStats(BaseModel):
+    count: int = 0
+    min_bpm: Optional[int] = None
+    max_bpm: Optional[int] = None
+    avg_bpm: Optional[float] = None
+    baseline_bpm: Optional[int] = None
+
+
+class BiometricPoint(BaseModel):
+    t_ms: int
+    bpm_avg: float
+    bpm_max: int
+
+
+class BiometricSeriesResponse(BaseModel):
+    session_id: UUID
+    stats: BiometricStats
+    points: List[BiometricPoint] = []

@@ -1,6 +1,6 @@
 from src.models.profile import ProfileCreate, ProfileUpdate, ProfileResponse
 from src.models.company import CompanyResponse, CompanyValue
-from src.models.resume import ResumeUploadResponse
+from src.models.resume import ResumeUploadResponse, ProfileResumeResponse
 from src.models.session import (
     SessionCreate,
     SessionCreateResponse,
@@ -9,11 +9,18 @@ from src.models.session import (
     SessionQuestionItem,
     QuestionShowRequest,
     QuestionShowResponse,
+    SessionListItem,
+    SessionListResponse,
+    SessionCompanyInfo,
+    SessionReprocessResponse,
 )
 from src.models.biometric import (
     BiometricSample,
     BiometricBatchRequest,
     BiometricBatchResponse,
+    BiometricStats,
+    BiometricPoint,
+    BiometricSeriesResponse,
 )
 from src.models.audio import AudioUploadResponse
 from src.models.report import ReportResponse, ReportData, ReportFinding
@@ -26,6 +33,7 @@ __all__ = [
     "CompanyResponse",
     "CompanyValue",
     "ResumeUploadResponse",
+    "ProfileResumeResponse",
     "SessionCreate",
     "SessionCreateResponse",
     "SessionDetailResponse",
@@ -33,9 +41,16 @@ __all__ = [
     "SessionQuestionItem",
     "QuestionShowRequest",
     "QuestionShowResponse",
+    "SessionListItem",
+    "SessionListResponse",
+    "SessionCompanyInfo",
+    "SessionReprocessResponse",
     "BiometricSample",
     "BiometricBatchRequest",
     "BiometricBatchResponse",
+    "BiometricStats",
+    "BiometricPoint",
+    "BiometricSeriesResponse",
     "AudioUploadResponse",
     "ReportResponse",
     "ReportData",

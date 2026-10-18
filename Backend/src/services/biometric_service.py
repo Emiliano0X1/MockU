@@ -1,4 +1,5 @@
-from typing import Any, Dict, List
+import statistics
+from typing import Any, Dict, List, Optional
 from src.core.config import supabase
 from src.core.exceptions import (
     BadRequestException,
@@ -92,3 +93,127 @@ def ingest_biometrics_batch(
         inserted_count = len(res.data) if res.data else len(rows_to_insert)
 
     return inserted_count
+
+
+def get_biometric_series(
+    session_id: str,
+    max_points: int = 300,
+    from_ms: Optional[int] = None,
+    to_ms: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Retrieve biometric series for frontend dashboard charts.
+    Reduces data points to max_points using bucketing (preserving bpm_max).
+    Calculates summary stats and baseline BPM (median of first 90 seconds).
+    """
+    # 1. Verify session exists
+    s_res = (
+        supabase.table("interview_sessions")
+        .select("id")
+        .eq("id", str(session_id))
+        .execute()
+    )
+    if not s_res.data:
+        raise NotFoundException(
+            message=f"Session with id '{session_id}' not found.",
+            code="SESSION_NOT_FOUND",
+        )
+
+    # Validate window
+    if from_ms is not None and from_ms < 0:
+        raise UnprocessableEntityException("from_ms must be greater than or equal to 0.")
+    if from_ms is not None and to_ms is not None and to_ms < from_ms:
+        raise UnprocessableEntityException("to_ms must be greater than or equal to from_ms.")
+
+    # 2. Select samples in requested window ordered by t_ms
+    query = (
+        supabase.table("biometric_samples")
+        .select("t_ms, bpm")
+        .eq("session_id", str(session_id))
+    )
+    if from_ms is not None:
+        query = query.gte("t_ms", from_ms)
+    if to_ms is not None:
+        query = query.lte("t_ms", to_ms)
+
+    res = query.order("t_ms").execute()
+    samples = res.data or []
+
+    if not samples:
+        return {
+            "session_id": session_id,
+            "stats": {
+                "count": 0,
+                "min_bpm": None,
+                "max_bpm": None,
+                "avg_bpm": None,
+                "baseline_bpm": None,
+            },
+            "points": [],
+        }
+
+    # Extract metrics
+    bpms = [s["bpm"] for s in samples]
+    count = len(samples)
+    min_bpm = min(bpms)
+    max_bpm = max(bpms)
+    avg_bpm = round(sum(bpms) / count, 1)
+
+    # Baseline rule: median of the first 60-90 seconds (t_ms <= 90000)
+    baseline_samples = [s["bpm"] for s in samples if s["t_ms"] <= 90000]
+    baseline_bpm = (
+        int(round(statistics.median(baseline_samples)))
+        if len(baseline_samples) >= 3
+        else None
+    )
+
+    # 3. Bucketing logic
+    capped_max_points = min(max(1, max_points), 1000)
+    if count <= capped_max_points:
+        points = [
+            {
+                "t_ms": s["t_ms"],
+                "bpm_avg": float(s["bpm"]),
+                "bpm_max": s["bpm"],
+            }
+            for s in samples
+        ]
+    else:
+        min_t = samples[0]["t_ms"]
+        max_t = samples[-1]["t_ms"]
+        bucket_duration = (max_t - min_t) / capped_max_points if max_t > min_t else 1
+
+        buckets: Dict[int, List[int]] = {}
+        bucket_first_t: Dict[int, int] = {}
+
+        for s in samples:
+            b_idx = int((s["t_ms"] - min_t) / bucket_duration)
+            if b_idx >= capped_max_points:
+                b_idx = capped_max_points - 1
+            if b_idx not in buckets:
+                buckets[b_idx] = []
+                bucket_first_t[b_idx] = s["t_ms"]
+            buckets[b_idx].append(s["bpm"])
+
+        points = []
+        for b_idx in sorted(buckets.keys()):
+            b_bpms = buckets[b_idx]
+            points.append(
+                {
+                    "t_ms": bucket_first_t[b_idx],
+                    "bpm_avg": round(sum(b_bpms) / len(b_bpms), 1),
+                    "bpm_max": max(b_bpms),
+                }
+            )
+
+    return {
+        "session_id": session_id,
+        "stats": {
+            "count": count,
+            "min_bpm": min_bpm,
+            "max_bpm": max_bpm,
+            "avg_bpm": avg_bpm,
+            "baseline_bpm": baseline_bpm,
+        },
+        "points": points,
+    }
