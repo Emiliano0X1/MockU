@@ -477,8 +477,11 @@ def reprocess_session(session_id: str) -> Dict[str, Any]:
         )
 
     # 4. Clear existing reports and transcript segments
+    # Findings hang off the report (report_id), so delete them via the session's reports.
     try:
-        supabase.table("report_findings").delete().eq("session_id", str(session_id)).execute()
+        report_ids = [r["id"] for r in supabase.table("reports").select("id").eq("session_id", str(session_id)).execute().data or []]
+        if report_ids:
+            supabase.table("report_findings").delete().in_("report_id", report_ids).execute()
     except Exception:
         pass
 

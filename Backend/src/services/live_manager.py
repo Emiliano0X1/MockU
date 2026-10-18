@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timezone
 import json
 import time
@@ -13,6 +14,8 @@ from src.core.live_config import (
     detector_config,
 )
 from src.services.spike_detector import DetectorState, evaluate_sample
+
+logger = logging.getLogger("mocku.live")
 
 
 class LiveSession:
@@ -58,6 +61,7 @@ class LiveSessionManager:
                 pass
 
         session.glasses_ws = ws
+        logger.info("[%s] glasses connected to the live socket", session_id)
 
         # Send initial sensor status
         await self.send_sensor_status(session)
@@ -67,6 +71,7 @@ class LiveSessionManager:
         session = self.get_session(session_id)
         if session and session.glasses_ws == ws:
             session.glasses_ws = None
+            logger.info("[%s] glasses disconnected from the live socket", session_id)
 
     async def send_sensor_status(self, session: LiveSession) -> None:
         """Send sensor_status message over WebSocket."""
@@ -92,6 +97,7 @@ class LiveSessionManager:
     ) -> bool:
         """Push a suggestion warning to the glasses HUD."""
         if not session.glasses_ws:
+            logger.warning("[%s] tip '%s' NOT delivered: no glasses connected", session.session_id, text)
             return False
 
         msg = {
@@ -104,8 +110,10 @@ class LiveSessionManager:
         }
         try:
             await session.glasses_ws.send_text(json.dumps(msg))
+            logger.info("[%s] tip sent to glasses at t=%.1fs: '%s' (%s, shows %ds)", session.session_id, t_ms / 1000, text, severity, ttl_ms // 1000)
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning("[%s] tip '%s' NOT delivered: socket error %s", session.session_id, text, e)
             session.glasses_ws = None
             return False
 
@@ -117,6 +125,7 @@ class LiveSessionManager:
         """
         session = self.get_session(session_id)
         if not session or not session.is_active:
+            logger.info("[%s] bpm %d ignored: no active live session", session_id, bpm)
             return
 
         now_mono = time.monotonic()
@@ -147,6 +156,8 @@ class LiveSessionManager:
         # Send every reading (not only the offline -> online transition) so the
         # app can show the live BPM.
         await self.send_sensor_status(session)
+
+        logger.info("[%s] bpm %d at t=%.1fs (%s)", session_id, bpm, t_ms / 1000, "manual" if explicit_t_ms is not None else "pulsoid")
 
         # Evaluate against spike detector rules
         has_glasses = session.glasses_ws is not None
@@ -220,6 +231,7 @@ class LiveSessionManager:
                 stale_threshold_sec = detector_config.STALE_MS / 1000.0
                 if session.sensor_online and (now_mono - session.last_sample_mono) > stale_threshold_sec:
                     session.sensor_online = False
+                    logger.warning("[%s] watch went stale: no heart rate for %ds", session.session_id, detector_config.STALE_MS // 1000)
                     await self.send_sensor_status(session)
 
                 # 2. Flush sample buffer every 5 seconds
@@ -247,6 +259,7 @@ class LiveSessionManager:
             return
 
         session.is_active = False
+        logger.info("[%s] live session ended (%d tips sent)", session_id, session.detector_state.suggestion_count)
 
         # Stop Pulsoid listener if running
         if session.pulsoid_task and not session.pulsoid_task.done():

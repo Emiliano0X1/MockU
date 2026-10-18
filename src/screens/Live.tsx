@@ -132,6 +132,14 @@ export function Live({ session, company, nav }: { session: SessionCreated; compa
   }, [upload])
 
   const handleMessage = useCallback((message: GlassesMessage) => {
+    // DEBUG: live channel traffic (heart rate and tips).
+    if (message.type === 'suggestion') {
+      console.log(`[live] tip at t=${(message.t_ms / 1000).toFixed(1)}s (${message.severity}, ${message.ttl_ms}ms): "${message.text}"${confirming.current ? ' (held: end-confirmation open)' : ''}`)
+    } else if (message.type === 'sensor_status') {
+      console.log(`[live] watch ${message.state}, ${message.last_bpm ?? '--'} bpm`)
+    } else {
+      console.log('[live]', message)
+    }
     if (message.type === 'sensor_status') {
       setSensor({ state: message.state, lastBpm: message.last_bpm })
     } else if (message.type === 'suggestion') {

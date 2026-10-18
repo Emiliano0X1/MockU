@@ -17,6 +17,9 @@ export function connectGlassesSocket(
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   let closedByUs = false
   const socket = new WebSocket(url)
+  // DEBUG: live socket lifecycle.
+  console.log(`[live] connecting to ${url}`)
+  socket.onopen = () => console.log('[live] socket open')
   const reply = (message: GlassesReply) => {
     if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message))
   }
@@ -33,7 +36,8 @@ export function connectGlassesSocket(
     if (message.type === 'suggestion') reply({ type: 'ack', suggestion_id: message.id })
     onMessage(message)
   }
-  socket.onclose = () => {
+  socket.onclose = (event) => {
+    console.log(`[live] socket closed (code ${event.code}${event.reason ? `, ${event.reason}` : ''})${closedByUs ? ' by the app' : ''}`)
     if (!closedByUs) onDisconnect?.()
   }
 

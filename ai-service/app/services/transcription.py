@@ -31,7 +31,7 @@ def transcribe_audio(audio_source: str) -> dict:
     "start": w.start, #in miliseconds
     "end":w.end #in miliseconds
   }
-  for w in transcript.words
+  for w in (transcript.words or [])  # None when the audio has no speech
   ]
   
   return{
