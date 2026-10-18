@@ -1,14 +1,14 @@
-# Project Name
+# Mock-U
 
 > One-line tagline that sums up what your project does.
 
-🏆 **Built for [Hackathon Name] [Year]** · [Track / Prize Category, if applicable]
+🏆 **Built for [AI LA Hacks] [2026]** · [Even Realities Building Challenge]
 
 ---
 
 ## 📖 What It Is
 
-A short description (2–4 sentences) of what your project is and what it does. Who is it for, and what can they do with it?
+Web application made for the Even Realities smart glasses for software engineering students who want to simulate behavioral and system design interviews through an immersive experience with speech and pulse analysis to give a personalized AI-generated report of its performance.
 
 ## 🎥 Demo
 
@@ -16,16 +16,14 @@ A short description (2–4 sentences) of what your project is and what it does. 
 
 ▶️ **[Watch the demo on YouTube](https://www.youtube.com/watch?v=YOUTUBE_VIDEO_ID)**
 
-<!-- Optional: live link -->
-🔗 **Live site:** [your-project-url.com](https://your-project-url.com)
 
 ## 💡 Why We Built It
 
 What problem inspired this project? Why does it matter, and what gap does it fill?
 
-- **The problem:** …
-- **Our solution:** …
-- **The impact:** …
+- **The problem:** Lack of resources for behavioral and system design interviews, which leads to sense of unpreparedness and lack of confidence.
+- **Our solution:** AI web application with seamless integration to Even Realities glasses that allows users to practice interview scenarios anywhere, through a responsive and convenient experience.
+- **The impact:** With the feedback generated on the interview report, interviewees can track their weaknesses, strengths, and how well they communicate their ideas and responses according to the company they're interviewing for. This leads to more preparedness and confidence-boost in interview performance.
 
 ## 🛠️ Tech Stack
 
@@ -34,11 +32,10 @@ What problem inspired this project? Why does it matter, and what gap does it fil
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Frontend | e.g. Next.js, Tailwind | … |
-| Backend | e.g. Node.js, FastAPI | … |
-| Database | e.g. Supabase, PostgreSQL | … |
-| AI / APIs | e.g. Claude API, Whisper | … |
-| Hosting | e.g. Vercel, Railway | … |
+| Frontend | React.js, Paper Design | … |
+| Backend | Node.js, Python | … |
+| Database | Supabase, PostgreSQL | … |
+| AI / APIs | Claude Code, Gemini API, Assembly AI  | … |
 
 **How it fits together:** A sentence or two describing how data flows through the system.
 
@@ -55,4 +52,6 @@ npm run dev
 
 | Name | Role | GitHub |
 |------|------|--------|
-| Your Name | … | [@username](https://github.com/username) |
+|Ronald Narain| Frontend Developer | [@ronaldgabrieln](https://github.com/ronaldgabrieln) |
+|Emiliano Gonzalez| Backend Developer | [@Emiliano0X1](https://github.com/Emiliano0X1) |
+|Leonardo Piedras| AI Systems Developer | [@lpiedras4](https://github.com/lpiedras4) |
